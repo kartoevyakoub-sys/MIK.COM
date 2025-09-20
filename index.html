@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Расписание занятий</title>
+  <style>
+
+    @font-face {font-family:'Название шрифта';src: url('RedOctober-Fat.ttf');}
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      line-height: 1.6;
+      padding: 15px;
+      background: linear-gradient(180deg, #f7f9fc, #eef1f6);
+      color: #333;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    body.dark {
+      background: #1e1e1e;
+      color: #e0e0e0;
+    }
+
+    .container {
+      max-width: 100%;
+      margin: 0 auto;
+    }
+
+    .week-title {
+      font-size: 1.6rem;
+      font-weight: bold;
+      text-align: center;
+      margin: 25px 0 18px;
+      padding: 12px;
+      background: #4a76a8;
+      color: #fff;
+      border-radius: 10px;
+      box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+      letter-spacing: 1px;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.6s ease;
+    }
+
+    body.dark .week-title {
+      background: #2d5a8a;
+      color: #fff;
+    }
+
+    .day-card {
+      background: #fff;
+      border-radius: 12px;
+      margin-bottom: 18px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      overflow: hidden;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.6s ease, background 0.3s;
+    }
+
+    body.dark .day-card {
+      background: #2a2a2a;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    .day-header {
+      background: #6c8fb5;
+      color: white;
+      padding: 14px 16px;
+      font-weight: bold;
+      font-size: 1.15rem;
+      letter-spacing: 0.5px;
+      transition: background 0.3s;
+    }
+
+    body.dark .day-header {
+      background: #3f5d82;
+    }
+
+    .day-content {
+      padding: 15px;
+    }
+
+    .lesson {
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px dashed #e5e5e5;
+    }
+
+    .lesson strong{
+        font-size: 15px;
+        font-family: 'Times New Roman', Times, serif;
+        padding-left: 20px;
+    }
+    
+
+    body.dark .lesson {
+      border-bottom: 1px dashed #555;
+    }
+
+    .lesson:last-child {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+
+    .online {
+      background: #e3f7ff;
+      padding: 14px;
+      border-radius: 8px;
+      margin-top: 10px;
+      font-weight: 500;
+      color: #31708e;
+      text-align: center;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    body.dark .online {
+      background: #34525e;
+      color: #cce7f0;
+    }
+
+    .group-difference {
+      background: #f6e9fa;
+      padding: 8px;
+      border-radius: 6px;
+      margin-top: 6px;
+      transition: background 0.3s;
+    }
+
+    body.dark .group-difference {
+      background: #3b2f40;
+    }
+
+    /* Анимация появления */
+    .show {
+      opacity: 1 !important;
+      transform: translateY(0) !important;
+    }
+
+    /* Кнопка переключения темы */
+    .theme-toggle {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: none;
+      background: #4a76a8;
+      color: #fff;
+      font-size: 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+      transition: background 0.3s;
+      z-index: 999;
+    }
+
+    .theme-toggle:hover {
+      background: #365a84;
+    }
+
+    body.dark .theme-toggle {
+      background: #444;
+    }
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" id="themeBtn">🌙</button>
+  <div class="container">
+    
+    <div class="container">
+        <div class="week">
+            <div class="week-title">1 НЕДЕЛЯ</div>
+            
+            <div class="day-card">
+                <div class="day-header">ПОНЕДЕЛЬНИК</div>
+                <div class="day-content">
+                    <div class="lesson">
+                        1) Механика.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        2) Механика.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        3) Механика.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        4) Основы рос.гос.<br>
+                        <strong></strong>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="day-card">
+                <div class="day-header">ВТОРНИК</div>
+                <div class="day-content">
+                    <div class="lesson">
+                        1) Введение в физ.практикум.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        2) Аналит.геометр.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        3) Механика.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        4) Механика.<br>
+                        <strong></strong>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="day-card">
+                <div class="day-header">СРЕДА</div>
+                <div class="day-content">
+                    <div class="lesson">
+                        1) История России.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        2) Элемент. физика.<br>
+                        <strong></strong>
+                    </div>
+                    
+                    </div>
+                </div>
+            </div>
+            
+            <div class="day-card">
+                <div class="day-header">ЧЕТВЕРГ</div>
+                <div class="day-content">
+                    <div class="lesson">
+                        1) Иностранный язык.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        2) Иностранный язык.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        3) Основы росс.госуд.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        4) Ингушский язык.<br>
+                        <strong></strong> 
+                    </div>
+                </div>
+            </div>
+            
+            <div class="day-card">
+                <div class="day-header">ПЯТНИЦА</div>
+                <div class="day-content">
+                    <div class="lesson">
+                        1) Математический анализ.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        1) Математический анализ.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        2) Химия.<br>
+                        <strong></strong>
+                        </div>
+                    </div>
+                    
+                    </div>
+                </div>
+            </div>
+            
+            <div class="day-card">
+                <div class="day-header">СУББОТА</div>
+                <div class="day-content">
+                    <div class="online">
+                        ПАР НЕТ<br>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="week">
+            <div class="week-title">2 НЕДЕЛЯ</div>
+            
+            <div class="day-card">
+                <div class="day-header">ПОНЕДЕЛЬНИК</div>
+                <div class="day-content">
+                    <div class="lesson">
+                        1) Механика.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        2) Механика.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        3) Механика.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        4) Основы рос.гос. <br>
+                        <strong></strong>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="day-card">
+                <div class="day-header">ВТОРНИК</div>
+                <div class="day-content">
+                    <div class="lesson">
+                        1) Аналит.геометрия.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        2) Аналит.геометрия.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        3) Механика.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        4) Механика.<br>
+                        <strong></strong>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="day-card">
+                <div class="day-header">СРЕДА</div>
+                <div class="day-content">
+                    <div class="lesson">
+                        1) История России.<br>
+                        <strong></strong>
+                        
+                    </div>
+                    <div class="lesson">
+                        2) Ингушские язык.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        3) Элементарная физика.<br>
+                        <strong></strong>
+                        
+                    </div>
+                </div>
+            </div>
+            
+            <div class="day-card">
+                <div class="day-header">ЧЕТВЕРГ</div>
+                <div class="day-content">
+                    <div class="lesson">
+                        1) История России.<br>
+                        <strong></strong>
+                        
+                    </div>
+                    <div class="lesson">
+                        2) История России.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        3) Иностранный язык.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        4) Элемент. физика.<br>
+                        <strong></strong>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="day-card">
+                <div class="day-header">ПЯТНИЦА</div>
+                <div class="day-content">
+                    <div class="lesson">
+                        1) Химия.<br>
+                        <strong></strong>
+                        
+                    </div>
+                    <div class="lesson">
+                        2) Мат.анализ.<br>
+                        <strong></strong>
+                        
+                    </div>
+                    <div class="lesson">
+                        3) Химия.<br>
+                        <strong></strong>
+                    </div>
+                    <div class="lesson">
+                        4) Введение в физ.практ.<br>
+                        <strong></strong>
+                    </div>
+                </div>
+            </div>
+                    
+                            
+                            
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="day-card">
+                <div class="day-header">СУББОТА</div>
+                <div class="day-content">
+                    <div class="lesson">
+                        1) Общая физ.подготовка.<br>
+                        <strong></strong>
+                        
+                    </div>
+                    <div class="lesson">
+                        2) Физ.культура.<br>
+                        <strong></strong>
+                        
+                    </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <script>
+    // Анимация при скролле
+    const items = document.querySelectorAll('.week-title, .day-card');
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('show');
+        } else {
+          entry.target.classList.remove('show');
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -10% 0px' });
+
+    items.forEach(el => io.observe(el));
+
+    // Переключение темы
+    const themeBtn = document.getElementById('themeBtn');
+    themeBtn.addEventListener('click', () => {
+      document.body.classList.toggle('dark');
+      themeBtn.textContent = document.body.classList.contains('dark') ? '☀️' : '🌙';
+    });
+  </script>
+</body>
+</html>
