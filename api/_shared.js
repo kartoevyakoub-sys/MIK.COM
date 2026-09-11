@@ -1,0 +1,85 @@
+/**
+ * Общие утилиты для API-функций MIK.COM.
+ *
+ * База данных — Vercel Blob. Каждый материал хранится как:
+ *   - json-блоб с метаданными:      materials/{id}.json или exams/{id}.json
+ *   - файл (если загружен):         materials/{id}/{имя файла}
+ *
+ * Такой формат исключает конфликты параллельных записей: каждый материал —
+ * отдельный объект, никакая общая «большая JSON» файл не перезаписывается.
+ */
+
+import { list, del } from '@vercel/blob';
+
+const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
+
+if (!TOKEN) {
+  console.warn('BLOB_READ_WRITE_TOKEN не задан — Blob API будет падать с 401.');
+}
+
+export const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type'
+};
+
+export function metaPath(kind, id) {
+  return `${kind}/${id}.json`;
+}
+
+/**
+ * Выполняет list() по префиксу, проходя пагинацию до конца.
+ */
+async function listAll(prefix) {
+  let blobs = [];
+  let cursor;
+  do {
+    const page = await list({ prefix, cursor, limit: 1000 });
+    blobs = blobs.concat(page.blobs);
+    cursor = page.cursor;
+  } while (cursor);
+  return blobs;
+}
+
+/**
+ * Возвращает все метаданные материалов нужного типа (materials | exams),
+ * отсортированные по дате добавления (новые сверху).
+ */
+export async function getAll(kind) {
+  const blobs = await listAll(`${kind}/`);
+  const meta = [];
+  for (const blob of blobs) {
+    if (!blob.pathname.endsWith('.json')) continue;
+    try {
+      const response = await fetch(blob.url);
+      if (!response.ok) continue;
+      meta.push(await response.json());
+    } catch {
+      // Повреждённый блоб пропускаем.
+    }
+  }
+  meta.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return meta;
+}
+
+/**
+ * Удаляет файл и метаданные материала вместе со всеми файлами его папки.
+ */
+export async function deleteMaterial(kind, id) {
+  const prefix = `${kind}/${id}`;
+  const blobs = await listAll(prefix);
+  for (const blob of blobs) {
+    await del(blob.url);
+  }
+}
+
+export function guessKind(name, type) {
+  const t = type || '';
+  if (t.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|avif|ico)$/i.test(name)) return 'image';
+  if (t.startsWith('audio/') || /\.(mp3|wav|m4a|ogg|aac|flac|opus)$/i.test(name)) return 'audio';
+  if (t.startsWith('video/') || /\.(mp4|webm|mov|m4v|avi)$/i.test(name)) return 'video';
+  if (t === 'application/pdf' || /\.pdf$/i.test(name)) return 'pdf';
+  if (t.startsWith('text/') || /\.(txt|md|csv|log|json|xml|html|htm)$/i.test(name)) return 'text';
+  if (/\.(doc|docx|xls|xlsx|ppt|pptx|odt|ods|odp|rtf)$/i.test(name)) return 'document';
+  return 'file';
+}

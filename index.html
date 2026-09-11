@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#111111">
+  <title>Расписание</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark">
+  <button class="menu-button" id="menuBtn" aria-label="Открыть меню" aria-expanded="false">
+    <span></span><span></span><span></span>
+    <i class="notification-dot" id="menuNotification" hidden></i>
+  </button>
+
+  <div class="menu-overlay" id="menuOverlay"></div>
+
+  <aside class="side-panel" id="sidePanel" aria-hidden="true">
+    <div class="panel-header">
+      <div>
+        <div class="panel-date" id="todayDate">—</div>
+        <div class="panel-day" id="todayDay">—</div>
+      </div>
+      <button class="close-panel" id="closePanel" aria-label="Закрыть меню">×</button>
+    </div>
+
+    <div class="week-switcher menu-card">
+      <div class="menu-card-title">Неделя</div>
+      <div class="week-controls">
+        <button id="prevWeek" aria-label="Предыдущая неделя">‹</button>
+        <strong id="currentWeekLabel">—</strong>
+        <button id="nextWeek" aria-label="Следующая неделя">›</button>
+      </div>
+    </div>
+
+    <nav class="menu-nav">
+      <button class="menu-item active" data-section="schedule"><span>📅</span> Расписание</button>
+      <button class="menu-item" data-section="lectures"><span>📚</span> Лекции <i class="item-dot" data-dot="lectures" hidden></i></button>
+      <button class="menu-item" data-section="subjects"><span>📖</span> Предметы <i class="item-dot" data-dot="subjects" hidden></i></button>
+      <button class="menu-item" data-section="exams"><span>🎓</span> Сессии и экзамены <i class="item-dot" data-dot="exams" hidden></i></button>
+      <button class="menu-item" data-action="add"><span>＋</span> Добавить материал</button>
+      <button class="menu-item" data-action="mail"><span>✉️</span> Просмотреть почту</button>
+      <button class="menu-item" data-section="wallpapers"><span>🖼️</span> Обои</button>
+      <div class="menu-item theme-row">
+        <span>🌙</span><span>Сменить тему</span>
+        <button class="ios-switch" id="themeSwitch" role="switch" aria-checked="false"><span></span></button>
+      </div>
+    </nav>
+
+    <div class="panel-footer">Настройки сохраняются на этом устройстве.</div>
+  </aside>
+
+  <main class="container" id="app">
+    <section id="scheduleSection" class="app-section active-section">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">РАСПИСАНИЕ</p>
+          <h1 id="scheduleTitle">Расписание</h1>
+          <p id="scheduleSubtitle">—</p>
+        </div>
+      </div>
+      <div id="scheduleContainer"></div>
+    </section>
+
+    <section id="lecturesSection" class="app-section">
+      <div class="section-heading">
+        <div><p class="eyebrow">МАТЕРИАЛЫ</p><h1>Лекции</h1><p>Выберите предмет и найдите нужные материалы.</p></div>
+        <button class="primary-action" data-action="add">＋ Добавить</button>
+      </div>
+      <div class="subject-pills" id="lectureSubjects"></div>
+      <div class="search-box"><span>⌕</span><input id="lectureSearch" type="search" placeholder="Поиск материалов"></div>
+      <div class="materials-grid" id="lecturesGrid"></div>
+    </section>
+
+    <section id="subjectsSection" class="app-section">
+      <div class="section-heading"><div><p class="eyebrow">КАТАЛОГ</p><h1>Предметы</h1><p>Откройте предмет, чтобы посмотреть его материалы.</p></div></div>
+      <div class="subject-grid" id="subjectsGrid"></div>
+    </section>
+
+    <section id="examsSection" class="app-section">
+      <div class="section-heading"><div><p class="eyebrow">ПОДГОТОВКА</p><h1>Сессии и экзамены</h1><p>Вопросы, шпаргалки и материалы для подготовки.</p></div><button class="primary-action" data-action="add-exam">＋ Добавить</button></div>
+      <div class="materials-grid" id="examsGrid"></div>
+    </section>
+
+    <section id="wallpapersSection" class="app-section">
+      <div class="section-heading"><div><p class="eyebrow">ОФОРМЛЕНИЕ</p><h1>Обои</h1><p>Выбор сохраняется только на этом устройстве.</p></div></div>
+      <div class="wallpaper-grid" id="wallpaperGrid"></div>
+      <label class="upload-wallpaper">＋ Выбрать своё изображение<input id="wallpaperInput" type="file" accept="image/*"></label>
+      <button class="secondary-action" id="resetWallpaper">Сбросить мои обои</button>
+    </section>
+  </main>
+
+  <dialog class="add-dialog" id="addDialog">
+    <form method="dialog" id="addForm">
+      <div class="dialog-head"><div><p class="eyebrow">НОВЫЙ МАТЕРИАЛ</p><h2>Добавить файл</h2></div><button type="button" class="dialog-close" data-dialog-cancel aria-label="Закрыть">×</button></div>
+      <p class="important-note">Название обязательно. Подпишите файл так, чтобы одногруппникам сразу было понятно, что внутри.</p>
+      <label>Предмет<select id="addSubject" required></select></label>
+      <label>Файл<input id="fileInput" type="file" accept="*/*"></label>
+      <label>Название<input id="fileTitle" type="text" maxlength="80" placeholder="Например: Лекция 4 — второй закон Ньютона" required></label>
+      <label>Описание <span>(необязательно)</span><textarea id="fileDescription" maxlength="240" placeholder="Что это и для чего"></textarea></label>
+      <label>Или ссылка<input id="linkInput" type="url" placeholder="https://..."></label>
+      <div id="uploadPreview" class="upload-preview" hidden></div>
+      <div class="dialog-actions"><button type="button" class="secondary-action" data-dialog-cancel>Отмена</button><button id="saveMaterial" type="submit" class="primary-action">Добавить</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="add-dialog" id="examDialog">
+    <form method="dialog" id="examForm">
+      <div class="dialog-head"><div><p class="eyebrow">СЕССИЯ</p><h2>Добавить материал</h2></div><button type="button" class="dialog-close" data-dialog-cancel aria-label="Закрыть">×</button></div>
+      <p class="important-note">Добавьте вопрос, документ, изображение или аудиозапись для подготовки.</p>
+      <label>Название<input id="examTitle" type="text" maxlength="80" required placeholder="Например: Вопросы к экзамену по физике"></label>
+      <label>Файл<input id="examFile" type="file"></label>
+      <label>Описание <span>(необязательно)</span><textarea id="examDescription" maxlength="240"></textarea></label>
+      <div id="examPreview" class="upload-preview" hidden></div>
+      <div class="dialog-actions"><button type="button" class="secondary-action" data-dialog-cancel>Отмена</button><button type="submit" class="primary-action">Добавить</button></div>
+    </form>
+  </dialog>
+
+  <script src="script.js"></script>
+</body>
+</html>
