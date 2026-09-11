@@ -182,6 +182,29 @@ function objectUrl(data, type) {
   return URL.createObjectURL(new Blob([data], { type: type || 'application/octet-stream' }));
 }
 
+// Генерирует лёгкую миниатюру (макс. 900px, JPEG) прямо в браузере.
+// Она сохраняется как previewUrl и используется для быстрого предпросмотра,
+// а оригинал остаётся для скачивания.
+function makeImageThumb(file) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 900;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const width = Math.max(1, Math.round(img.width * scale));
+      const height = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.78);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
 function isNew(item) {
   return item.newForEveryone !== false && !JSON.parse(localStorage.getItem('mik-seen') || '[]').includes(item.id);
 }
@@ -300,12 +323,9 @@ function renderSubjects() {
 function renderMaterialCard(item) {
   const kind = item.kind || fileKind(item.fileName);
   const fresh = isNew(item);
-  const previewSrc = item.fileUrl || (item.data ? objectUrl(item.data, item.mime) : '');
-  // Картинки из Blob запрашиваем ужатыми до 1200px, чтобы предпросмотр
-  // открывался быстро даже на слабом интернете.
-  const imageSrc = previewSrc && kind === 'image' && item.fileUrl ? `${item.fileUrl}?width=1200` : previewSrc;
+  const previewSrc = item.previewUrl || item.fileUrl || (item.data ? objectUrl(item.data, item.mime) : '');
   let preview = '';
-  if (kind === 'image' && previewSrc) preview = `<div class="preview"><img src="${imageSrc}" alt="Предпросмотр" loading="lazy" decoding="async"></div>`;
+  if (kind === 'image' && previewSrc) preview = `<div class="preview"><img src="${previewSrc}" alt="Предпросмотр" loading="lazy" decoding="async"></div>`;
   else if (kind === 'audio' && previewSrc) preview = `<div class="preview"><audio controls src="${previewSrc}"></audio></div>`;
   else if (kind === 'video' && previewSrc) preview = `<div class="preview"><video controls playsinline src="${previewSrc}"></video></div>`;
   else if (kind === 'pdf' && previewSrc) preview = `<div class="preview preview-document"><iframe title="Предпросмотр PDF" src="${previewSrc}"></iframe></div>`;
@@ -420,6 +440,11 @@ async function saveMaterial(event) {
   if (file) form.append('file', file);
   else form.append('url', url);
 
+  if (file && fileKind(file) === 'image' && file.type !== 'image/svg+xml') {
+    const thumb = await makeImageThumb(file);
+    if (thumb) form.append('preview', thumb, 'preview.jpg');
+  }
+
   try {
     const response = await fetch(`${API_BASE}/materials`, { method: 'POST', body: form });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -443,6 +468,11 @@ async function saveExam(event) {
   form.append('title', title);
   form.append('description', els.examDescription.value.trim());
   form.append('file', file);
+
+  if (file && fileKind(file) === 'image' && file.type !== 'image/svg+xml') {
+    const thumb = await makeImageThumb(file);
+    if (thumb) form.append('preview', thumb, 'preview.jpg');
+  }
 
   try {
     const response = await fetch(`${API_BASE}/exams`, { method: 'POST', body: form });
