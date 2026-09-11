@@ -13,8 +13,11 @@ import { list, del } from '@vercel/blob';
 
 const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
-if (!TOKEN) {
-  console.warn('BLOB_READ_WRITE_TOKEN не задан — Blob API будет падать с 401.');
+// Если классический токен не задан — работаем через OIDC (storeId из env).
+export const BLOB_STORE_ID = TOKEN ? undefined : (process.env.BLOB_STORE_ID || process.env.ING_STORE_ID);
+
+if (!TOKEN && !BLOB_STORE_ID) {
+  console.warn('Blob не настроен: задайте BLOB_READ_WRITE_TOKEN или BLOB_STORE_ID/ING_STORE_ID.');
 }
 
 export const CORS_HEADERS = {
@@ -34,7 +37,7 @@ async function listAll(prefix) {
   let blobs = [];
   let cursor;
   do {
-    const page = await list({ prefix, cursor, limit: 1000 });
+    const page = await list({ prefix, cursor, limit: 1000, storeId: BLOB_STORE_ID });
     blobs = blobs.concat(page.blobs);
     cursor = page.cursor;
   } while (cursor);
@@ -69,7 +72,7 @@ export async function deleteMaterial(kind, id) {
   const prefix = `${kind}/${id}`;
   const blobs = await listAll(prefix);
   for (const blob of blobs) {
-    await del(blob.url);
+    await del(blob.url, { storeId: BLOB_STORE_ID });
   }
 }
 

@@ -7,7 +7,7 @@
  */
 
 import { put } from '@vercel/blob';
-import { getAll, deleteMaterial, metaPath, guessKind, CORS_HEADERS } from './_shared.js';
+import { getAll, deleteMaterial, metaPath, guessKind, CORS_HEADERS, BLOB_STORE_ID } from './_shared.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -43,6 +43,7 @@ export default async function handler(req, res) {
         access: 'public',
         addRandomSuffix: true,
         contentType: mime,
+        storeId: BLOB_STORE_ID,
       });
 
       const meta = {
@@ -63,6 +64,7 @@ export default async function handler(req, res) {
         access: 'public',
         contentType: 'application/json',
         cacheControlMaxAge: 0,
+        storeId: BLOB_STORE_ID,
       });
 
       return res.status(201).json(meta);
