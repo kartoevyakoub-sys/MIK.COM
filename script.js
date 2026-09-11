@@ -123,6 +123,26 @@ function saveLocalSettings() {
   localStorage.setItem('mik-week', String(state.week));
 }
 
+// Быстрый локальный кэш последних данных с сервера: при новом открытии сайта
+// списки рисуются из кэша мгновенно, а поверх тихо приезжает свежий ответ API.
+// Так «первый экран» на любом устройстве появляется сразу, как на iPhone.
+function cacheGet(key, fallback) {
+  try {
+    const raw = localStorage.getItem('mik-cache-' + key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function cacheSet(key, value) {
+  try {
+    localStorage.setItem('mik-cache-' + key, JSON.stringify(value));
+  } catch (e) {
+    // Кэш переполнен или недоступен — просто пропускаем сохранение.
+  }
+}
+
 function formatBytes(bytes) {
   if (!bytes) return '';
   const units = ['Б', 'КБ', 'МБ', 'ГБ'];
@@ -539,6 +559,8 @@ async function loadData(silent) {
     ]);
     state.materials = materials || [];
     state.exams = exams || [];
+    cacheSet('materials', state.materials);
+    cacheSet('exams', state.exams);
     renderAll();
   } catch (error) {
     // Сервер недоступен — показываем локальную копию из IndexedDB.
@@ -561,8 +583,19 @@ async function boot() {
   state.week = Number(localStorage.getItem('mik-week') || 1);
   state.selectedSubject = localStorage.getItem('mik-subject') || SUBJECTS[0];
   initEvents();
+  // Мгновенный первый экран: рисуем последние данные из кэша сразу,
+  // а ответ сервера подтянется фоном и тихо обновит списки.
+  const cachedMaterials = cacheGet('materials', null);
+  const cachedExams = cacheGet('exams', null);
+  if (cachedMaterials || cachedExams) {
+    if (cachedMaterials) state.materials = cachedMaterials;
+    if (cachedExams) state.exams = cachedExams;
+    renderAll();
+  }
+  const cachedSchedule = cacheGet('schedule', null);
+  if (cachedSchedule) renderSchedule(cachedSchedule);
   await loadData(false);
-  fetch('schedule.json').then(r => { if(!r.ok) throw new Error(r.status); return r.json(); }).then(renderSchedule).catch(err => { console.error(err); els.scheduleContainer.innerHTML='<div class="empty-state">Не удалось загрузить расписание. Запустите сайт через локальный HTTP-сервер.</div>'; });
+  fetch('schedule.json').then(r => { if(!r.ok) throw new Error(r.status); return r.json(); }).then(data => { cacheSet('schedule', data); renderSchedule(data); }).catch(err => { console.error(err); els.scheduleContainer.innerHTML='<div class="empty-state">Не удалось загрузить расписание. Запустите сайт через локальный HTTP-сервер.</div>'; });
   // Автообновление: изменения с любого устройства доходят до всех.
   setInterval(() => loadData(true), 20000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadData(true); });
