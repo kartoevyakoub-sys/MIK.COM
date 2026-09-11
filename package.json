@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@vercel/blob": "^2.8.0"
+    "@vercel/blob": "^2.8.0",
+    "busboy": "^1.6.0"
   }
 }

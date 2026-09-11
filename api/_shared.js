@@ -10,6 +10,7 @@
  */
 
 import { list, del } from '@vercel/blob';
+import Busboy from 'busboy';
 
 const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
@@ -28,6 +29,35 @@ export const CORS_HEADERS = {
 
 export function metaPath(kind, id) {
   return `${kind}/${id}.json`;
+}
+
+/**
+ * Парсит multipart/form-data из Node-запроса Vercel
+ * (req.formData() там недоступен). Возвращает { fields, files }.
+ */
+export function parseForm(req) {
+  return new Promise((resolve, reject) => {
+    const busboy = Busboy({ headers: req.headers });
+    const fields = {};
+    const files = [];
+    busboy.on('field', (name, value) => { fields[name] = value; });
+    busboy.on('file', (name, stream, info) => {
+      const chunks = [];
+      stream.on('data', (chunk) => chunks.push(chunk));
+      stream.on('end', () => {
+        files.push({
+          name,
+          filename: info.filename,
+          mime: info.mimeType,
+          buffer: Buffer.concat(chunks),
+          size: info.size
+        });
+      });
+    });
+    busboy.on('error', (error) => reject(error));
+    busboy.on('close', () => resolve({ fields, files }));
+    req.pipe(busboy);
+  });
 }
 
 /**

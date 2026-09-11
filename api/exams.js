@@ -7,9 +7,9 @@
  */
 
 import { put } from '@vercel/blob';
-import { getAll, deleteMaterial, metaPath, guessKind, CORS_HEADERS, BLOB_STORE_ID } from './_shared.js';
+import { getAll, deleteMaterial, metaPath, guessKind, parseForm, CORS_HEADERS, BLOB_STORE_ID } from './_shared.js';
 
-export const config = { runtime: 'nodejs' };
+export const config = { runtime: 'nodejs', api: { bodyParser: false } };
 
 const KIND = 'exams';
 
@@ -24,22 +24,22 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const form = await req.formData();
-      const title = String(form.get('title') || '').trim();
-      const description = String(form.get('description') || '').trim();
-      const file = form.get('file');
+      const { fields, files } = await parseForm(req);
+      const title = String(fields.title || '').trim();
+      const description = String(fields.description || '').trim();
+      const file = files[0];
 
       if (!title) return res.status(400).json({ error: 'Обязательно укажите название материала.' });
       if (!file) return res.status(400).json({ error: 'Выберите файл.' });
 
       const id = crypto.randomUUID();
       const createdAt = Date.now();
-      const fileName = file.name;
-      const mime = file.type || 'application/octet-stream';
+      const fileName = file.filename;
+      const mime = file.mime || 'application/octet-stream';
       const size = file.size;
       const kind = guessKind(fileName, mime);
 
-      const uploaded = await put(`${KIND}/${id}/${file.name}`, file.stream(), {
+      const uploaded = await put(`${KIND}/${id}/${file.filename}`, file.buffer, {
         access: 'public',
         addRandomSuffix: true,
         contentType: mime,

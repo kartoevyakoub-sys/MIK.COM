@@ -8,9 +8,9 @@
  */
 
 import { put } from '@vercel/blob';
-import { getAll, deleteMaterial, metaPath, guessKind, CORS_HEADERS, BLOB_STORE_ID } from './_shared.js';
+import { getAll, deleteMaterial, metaPath, guessKind, parseForm, CORS_HEADERS, BLOB_STORE_ID } from './_shared.js';
 
-export const config = { runtime: 'nodejs' };
+export const config = { runtime: 'nodejs', api: { bodyParser: false } };
 
 const KIND = 'materials';
 
@@ -25,12 +25,12 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const form = await req.formData();
-      const title = String(form.get('title') || '').trim();
-      const subject = String(form.get('subject') || '').trim();
-      const description = String(form.get('description') || '').trim();
-      const url = String(form.get('url') || '').trim();
-      const file = form.get('file');
+      const { fields, files } = await parseForm(req);
+      const title = String(fields.title || '').trim();
+      const subject = String(fields.subject || '').trim();
+      const description = String(fields.description || '').trim();
+      const url = String(fields.url || '').trim();
+      const file = files[0];
 
       if (!title) return res.status(400).json({ error: 'Обязательно подпишите файл: что это и для чего.' });
       if (!file && !url) return res.status(400).json({ error: 'Выберите файл или вставьте ссылку.' });
@@ -44,12 +44,12 @@ export default async function handler(req, res) {
       let kind = 'link';
       let linkUrl = '';
 
-      if (file instanceof File) {
-        fileName = file.name;
-        mime = file.type || 'application/octet-stream';
+      if (file) {
+        fileName = file.filename;
+        mime = file.mime || 'application/octet-stream';
         size = file.size;
         kind = guessKind(fileName, mime);
-        const uploaded = await put(`${KIND}/${id}/${file.name}`, file.stream(), {
+        const uploaded = await put(`${KIND}/${id}/${file.filename}`, file.buffer, {
           access: 'public',
           addRandomSuffix: true,
           contentType: mime,
@@ -97,6 +97,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Метод не поддерживается.' });
   } catch (error) {
     console.error('API materials error:', error);
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера.', details: error.message });
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера.' });
   }
 }
