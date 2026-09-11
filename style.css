@@ -33,3 +33,7 @@
 /* Окно загрузки файла — всегда по центру экрана, не сбоку */
 .add-dialog{position:fixed;inset:0;margin:auto;max-height:calc(100dvh - 24px);overflow-y:auto}
 .add-dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(2px)}
+
+/* Переключатель недели прямо на странице расписания */
+.schedule-week{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:2px 0 18px;padding:13px 18px;border:1px solid var(--line);background:var(--card2);border-radius:20px}
+.schedule-week .week-controls{margin-top:0;gap:10px}

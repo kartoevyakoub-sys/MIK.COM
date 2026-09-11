@@ -24,15 +24,6 @@
       <button class="close-panel" id="closePanel" aria-label="Закрыть меню">×</button>
     </div>
 
-    <div class="week-switcher menu-card">
-      <div class="menu-card-title">Неделя</div>
-      <div class="week-controls">
-        <button id="prevWeek" aria-label="Предыдущая неделя">‹</button>
-        <strong id="currentWeekLabel">—</strong>
-        <button id="nextWeek" aria-label="Следующая неделя">›</button>
-      </div>
-    </div>
-
     <nav class="menu-nav">
       <button class="menu-item active" data-section="schedule"><span>📅</span> Расписание</button>
       <button class="menu-item" data-section="lectures"><span>📚</span> Лекции <i class="item-dot" data-dot="lectures" hidden></i></button>
@@ -57,6 +48,14 @@
           <p class="eyebrow">РАСПИСАНИЕ</p>
           <h1 id="scheduleTitle">Расписание</h1>
           <p id="scheduleSubtitle">—</p>
+        </div>
+      </div>
+      <div class="schedule-week week-switcher">
+        <span class="menu-card-title">Неделя</span>
+        <div class="week-controls">
+          <button id="prevWeek" aria-label="Предыдущая неделя">‹</button>
+          <strong id="currentWeekLabel">—</strong>
+          <button id="nextWeek" aria-label="Следующая неделя">›</button>
         </div>
       </div>
       <div id="scheduleContainer"></div>

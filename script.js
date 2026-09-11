@@ -19,6 +19,7 @@ const SUBJECTS = [
 // Обои из локальной папки проекта — грузятся с любого устройства,
 // в отличие от внешних URL (Unsplash на ПК не открывался).
 const WALLPAPERS = [
+  'assets/backgrounds/ingush-mountains.jpg',
   'assets/backgrounds/dark-bg.jpg',
   'assets/backgrounds/light-bg.jpg',
   'assets/backgrounds/IMG_1492.jpeg',
@@ -188,20 +189,22 @@ function setWallpaper(url) {
 }
 
 function chooseRandomWallpaper() {
-  // Если пользователь не выбрал собственные обои, при каждом обновлении
-  // выбираем другой фон из доверенного набора Unsplash.
+  // Выбор происходит только один раз (или после «Сбросить обои»):
+  // дальше setWallpaper сохраняет его, и он больше не меняется.
   if (localStorage.getItem('mik-custom-wallpaper')) return;
   const previous = localStorage.getItem('mik-last-random-wallpaper');
   const options = WALLPAPERS.filter(url => url !== previous);
   const url = options[Math.floor(Math.random() * options.length)];
-  localStorage.setItem('mik-last-random-wallpaper', url);
   setWallpaper(url);
 }
 
 function loadWallpaper() {
   const custom = localStorage.getItem('mik-custom-wallpaper');
-  if (custom) setWallpaper(custom);
-  else chooseRandomWallpaper();
+  if (custom) { setWallpaper(custom); return; }
+  // Уже выбранные обои сохраняются: при каждом открытии сайта фон не меняется.
+  const chosen = localStorage.getItem('mik-wallpaper');
+  if (chosen && WALLPAPERS.includes(chosen)) { setWallpaper(chosen); return; }
+  chooseRandomWallpaper();
 }
 
 function applyTheme() {
