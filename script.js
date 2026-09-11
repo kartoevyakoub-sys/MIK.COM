@@ -16,15 +16,14 @@ const SUBJECTS = [
   'Физика', 'Математика', 'Программирование', 'Иностранный язык', 'Информатика', 'Другое'
 ];
 
-// Проверенные прямые изображения Unsplash. Если интернет недоступен,
-// сайт использует локальный фон из папки images.
+// Обои из локальной папки проекта — грузятся с любого устройства,
+// в отличие от внешних URL (Unsplash на ПК не открывался).
 const WALLPAPERS = [
-  'https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=2200&q=85',
-  'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=2200&q=85',
-  'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=2200&q=85',
-  'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2200&q=85',
-  'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=2200&q=85',
-  'https://images.unsplash.com/photo-1511497584788-876760111969?auto=format&fit=crop&w=2200&q=85'
+  'assets/backgrounds/dark-bg.jpg',
+  'assets/backgrounds/light-bg.jpg',
+  'assets/backgrounds/IMG_1492.jpeg',
+  'images/dark-bg.jpg',
+  'images/dark-bg1.jpg'
 ];
 
 const state = {
@@ -279,8 +278,11 @@ function renderMaterialCard(item) {
   const kind = item.kind || fileKind(item.fileName);
   const fresh = isNew(item);
   const previewSrc = item.fileUrl || (item.data ? objectUrl(item.data, item.mime) : '');
+  // Картинки из Blob запрашиваем ужатыми до 1200px, чтобы предпросмотр
+  // открывался быстро даже на слабом интернете.
+  const imageSrc = previewSrc && kind === 'image' && item.fileUrl ? `${item.fileUrl}?width=1200` : previewSrc;
   let preview = '';
-  if (kind === 'image' && previewSrc) preview = `<div class="preview"><img src="${previewSrc}" alt="Предпросмотр"></div>`;
+  if (kind === 'image' && previewSrc) preview = `<div class="preview"><img src="${imageSrc}" alt="Предпросмотр" loading="lazy" decoding="async"></div>`;
   else if (kind === 'audio' && previewSrc) preview = `<div class="preview"><audio controls src="${previewSrc}"></audio></div>`;
   else if (kind === 'video' && previewSrc) preview = `<div class="preview"><video controls playsinline src="${previewSrc}"></video></div>`;
   else if (kind === 'pdf' && previewSrc) preview = `<div class="preview preview-document"><iframe title="Предпросмотр PDF" src="${previewSrc}"></iframe></div>`;

@@ -29,3 +29,7 @@
 /* Кнопка удаления уже добавленного материала */
 .danger-action{color:#ff453a;border-color:rgba(255,69,58,.25);background:rgba(255,69,58,.08)}
 .danger-action:hover{background:rgba(255,69,58,.14);border-color:rgba(255,69,58,.4)}
+
+/* Окно загрузки файла — всегда по центру экрана, не сбоку */
+.add-dialog{position:fixed;inset:0;margin:auto;max-height:calc(100dvh - 24px);overflow-y:auto}
+.add-dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(2px)}
