@@ -97,6 +97,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Метод не поддерживается.' });
   } catch (error) {
     console.error('API materials error:', error);
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера.' });
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера.', details: error.message });
   }
 }
