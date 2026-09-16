@@ -193,6 +193,7 @@ function friendlyError(error) {
   if (error instanceof TypeError) return 'Нет интернет-соединения. Проверьте сеть и попробуйте ещё раз.';
   const message = String((error && error.message) || error);
   if (/invalid login credentials|invalid_credentials|email not confirmed|email_not_confirmed/i.test(message)) return 'Неверный email/пароль или почта не подтверждена.';
+  if (/email rate limit exceeded|over_email_send_rate_limit/i.test(message)) return 'Слишком много писем за последний час — это лимит хостинга. Подождите час или попробуйте позже.';
   if (/JWT|token.*(expired|invalid)|not authenticated/i.test(message)) return 'Сессия истекла. Войдите заново.';
   if (/row[- ]level security|permission denied|new row violates|violates|policy/i.test(message)) return 'Недостаточно прав: изменение разрешено только автору или администратору.';
   if (/storage/i.test(message)) return 'Не получилось сохранить файл. Попробуйте ещё раз.';
