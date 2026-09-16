@@ -8,6 +8,26 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="dark">
+  <div id="authScreen" class="auth-screen" hidden>
+    <div class="auth-card">
+      <div class="auth-logo">📅</div>
+      <h1>Расписание MIK</h1>
+      <p class="auth-sub">Войдите, чтобы видеть расписание и материалы</p>
+      <div class="auth-tabs" id="authTabs">
+        <button type="button" class="auth-tab active" data-mode="in">Вход</button>
+        <button type="button" class="auth-tab" data-mode="up">Регистрация</button>
+      </div>
+      <form id="authForm">
+        <label id="nameField" hidden>Имя<input id="authName" type="text" maxlength="40" placeholder="Как вас называть?"></label>
+        <label>Email<input id="authEmail" type="email" autocomplete="email" required placeholder="you@mail.ru"></label>
+        <label>Пароль<input id="authPassword" type="password" autocomplete="current-password" minlength="6" required placeholder="Минимум 6 символов"></label>
+        <div id="authError" class="auth-error" hidden></div>
+        <button type="submit" class="primary-action" id="authSubmit">Войти</button>
+      </form>
+      <p class="auth-note" hidden id="authNote"></p>
+    </div>
+  </div>
+
   <button class="menu-button" id="menuBtn" aria-label="Открыть меню" aria-expanded="false">
     <span></span><span></span><span></span>
     <i class="notification-dot" id="menuNotification" hidden></i>
@@ -38,6 +58,14 @@
       </div>
     </nav>
 
+    <div class="panel-user" id="userBlock" hidden>
+      <div class="user-avatar" id="userAvatar">👤</div>
+      <div>
+        <div class="user-name" id="userName">—</div>
+        <div class="user-role" id="userRole"></div>
+      </div>
+      <button type="button" class="logout-btn" id="logoutBtn">Выйти</button>
+    </div>
     <div class="panel-footer">Настройки сохраняются на этом устройстве.</div>
   </aside>
 
@@ -49,6 +77,7 @@
           <h1 id="scheduleTitle">Расписание</h1>
           <p id="scheduleSubtitle">—</p>
         </div>
+        <button class="secondary-action" id="editScheduleBtn" hidden>Редактировать</button>
       </div>
       <div class="schedule-week week-switcher">
         <span class="menu-card-title">Неделя</span>
@@ -115,6 +144,18 @@
     </form>
   </dialog>
 
+  <dialog class="add-dialog" id="scheduleDialog">
+    <form method="dialog" id="scheduleForm">
+      <div class="dialog-head"><div><p class="eyebrow">АДМИН</p><h2>Редактировать расписание</h2></div><button type="button" class="dialog-close" data-dialog-cancel aria-label="Закрыть">×</button></div>
+      <p class="important-note">JSON в том же формате, что <code>schedule.json</code> (weeks → days → lessons). Сохранение заменит расписание для всех.</p>
+      <label>Расписание (JSON)<textarea id="scheduleJson" rows="14" spellcheck="false" required></textarea></label>
+      <div id="scheduleError" class="auth-error" hidden></div>
+      <div class="dialog-actions"><button type="button" class="secondary-action" data-dialog-cancel>Отмена</button><button type="submit" class="primary-action" id="saveScheduleBtn">Сохранить</button></div>
+    </form>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script src="supabase.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

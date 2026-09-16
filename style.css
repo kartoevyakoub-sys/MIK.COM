@@ -37,3 +37,37 @@
 /* Переключатель недели прямо на странице расписания */
 .schedule-week{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:2px 0 18px;padding:13px 18px;border:1px solid var(--line);background:var(--card2);border-radius:20px}
 .schedule-week .week-controls{margin-top:0;gap:10px}
+
+/* Атрибут hidden должен работать всегда — иначе точки/панели не прячутся */
+[hidden]{display:none!important}
+
+/* Точки уведомлений: явно стилизуем, чтобы были видны на всех устройствах */
+.menu-button .notification-dot{position:absolute;top:-3px;right:-3px;width:12px;height:12px;border-radius:50%;background:var(--danger);border:2px solid #111;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
+.light .menu-button .notification-dot{border-color:#fff}
+.menu-item{position:relative}
+.menu-item .item-dot{position:absolute;right:14px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:var(--danger);box-shadow:0 0 0 2px var(--bg)}
+
+/* Экран входа */
+.auth-screen{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg)}
+.auth-screen::before{content:"";position:absolute;inset:0;background-image:var(--wallpaper);background-position:center;background-size:cover;opacity:.32;z-index:-1}
+.auth-card{width:min(420px,100%);background:var(--card);border:1px solid var(--line);border-radius:24px;padding:28px 24px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px}
+.auth-logo{font-size:44px;text-align:center}
+.auth-card h1{font-size:24px;letter-spacing:-.03em;text-align:center}
+.auth-sub{color:var(--muted);font-size:13px;text-align:center}
+.auth-tabs{display:flex;background:var(--card2);border-radius:12px;padding:4px;gap:4px}
+.auth-tab{flex:1;padding:9px;border:0;border-radius:9px;background:transparent;color:var(--muted);font-weight:600;font-size:14px}
+.auth-tab.active{background:var(--card);color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.auth-card form{display:flex;flex-direction:column;gap:12px}
+.auth-card label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:var(--muted)}
+.auth-card input{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--text);outline:none}
+.auth-card input:focus{border-color:var(--accent)}
+.auth-error{background:rgba(255,59,48,.12);border:1px solid rgba(255,59,48,.3);color:#ff6961;border-radius:12px;padding:10px 12px;font-size:13px}
+.auth-note{color:var(--muted);font-size:13px;text-align:center}
+.auth-card .primary-action{width:100%;justify-content:center}
+
+/* Пользователь в меню */
+.panel-user{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.user-avatar{width:36px;height:36px;border-radius:50%;background:var(--card2);display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto}
+.user-name{font-size:14px;font-weight:700;line-height:1.2;word-break:break-word}
+.user-role{font-size:11px;color:var(--muted)}
+.logout-btn{margin-left:auto;border:1px solid var(--line);background:var(--card2);border-radius:9px;padding:7px 10px;font-size:12px}

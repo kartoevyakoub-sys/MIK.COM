@@ -1,12 +1,14 @@
 {
   "name": "mik-com",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.116.0",
+    "@vercel/blob": "^2.8.0",
     "busboy": "^1.6.0"
   }
 }

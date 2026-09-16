@@ -6,10 +6,11 @@
  *                                    и file ИЛИ url; для картинки можно preview)
  *   DELETE /api/materials?id=<id>    удалить материал вместе с файлом
  *
- * Файлы хранятся в Cloudflare R2, метаданные — рядом в json-объектах.
+ * Файлы хранятся в Vercel Blob, метаданные — рядом в json-блобах.
  */
 
-import { getAll, deleteMaterial, metaPath, safeFileName, guessKind, parseForm, CORS_HEADERS, r2PutObject, r2Ready } from './_shared.js';
+import { put } from '@vercel/blob';
+import { getAll, deleteMaterial, metaPath, guessKind, parseForm, CORS_HEADERS, BLOB_STORE_ID } from './_shared.js';
 
 export const config = { runtime: 'nodejs', api: { bodyParser: false } };
 
@@ -22,12 +23,10 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      if (!r2Ready()) return res.status(500).json({ error: 'Хранилище R2 ещё не настроено.' });
       return res.status(200).json(await getAll(KIND));
     }
 
     if (req.method === 'POST') {
-      if (!r2Ready()) return res.status(500).json({ error: 'Хранилище R2 ещё не настроено.' });
       const { fields, files } = await parseForm(req);
       const title = String(fields.title || '').trim();
       const subject = String(fields.subject || '').trim();
@@ -54,10 +53,21 @@ export default async function handler(req, res) {
         mime = file.mime || 'application/octet-stream';
         size = file.size;
         kind = guessKind(fileName, mime);
-        const key = `${KIND}/${id}/${safeFileName(file.filename)}`;
-        fileUrl = await r2PutObject(key, file.buffer, mime);
+        const uploaded = await put(`${KIND}/${id}/${file.filename}`, file.buffer, {
+          access: 'public',
+          addRandomSuffix: true,
+          contentType: mime,
+          storeId: BLOB_STORE_ID,
+        });
+        fileUrl = uploaded.url;
         if (preview && preview.buffer.length) {
-          previewUrl = await r2PutObject(`${KIND}/${id}/_preview.jpg`, preview.buffer, 'image/jpeg');
+          const thumb = await put(`${KIND}/${id}/_preview`, preview.buffer, {
+            access: 'public',
+            addRandomSuffix: true,
+            contentType: 'image/jpeg',
+            storeId: BLOB_STORE_ID,
+          });
+          previewUrl = thumb.url;
         }
       } else if (url) {
         kind = 'link';
@@ -81,13 +91,17 @@ export default async function handler(req, res) {
         newForEveryone: true,
       };
 
-      await r2PutObject(metaPath(KIND, id), Buffer.from(JSON.stringify(meta)), 'application/json');
+      await put(metaPath(KIND, id), JSON.stringify(meta), {
+        access: 'public',
+        contentType: 'application/json',
+        cacheControlMaxAge: 0,
+        storeId: BLOB_STORE_ID,
+      });
 
       return res.status(201).json(meta);
     }
 
     if (req.method === 'DELETE') {
-      if (!r2Ready()) return res.status(500).json({ error: 'Хранилище R2 ещё не настроено.' });
       const id = String(req.query.id || '');
       if (!id) return res.status(400).json({ error: 'Не указан id материала.' });
       await deleteMaterial(KIND, id);

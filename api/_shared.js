@@ -1,23 +1,26 @@
 /**
  * Общие утилиты для API-функций MIK.COM.
  *
- * База данных — Cloudflare R2 (бесплатно 10 ГБ, трафик без лимита).
+ * База данных — Vercel Blob (входит в бесплатный Hobby-план, без карты).
  * Каждый материал хранится как:
- *   - json-объект с метаданными:      materials/{id}.json или exams/{id}.json
- *   - файл (если загружен):           materials/{id}/{имя файла}
- *   - превью (для картинок):          materials/{id}/_preview.jpg
+ *   - json-блоб с метаданными:      materials/{id}.json или exams/{id}.json
+ *   - файл (если загружен):         materials/{id}/{имя файла}
+ *   - превью (для картинок):        materials/{id}/_preview.jpg
  *
  * Такой формат исключает конфликты параллельных записей: каждый материал —
  * отдельный объект, никакая общая «большая JSON» файл не перезаписывается.
  */
 
+import { list, del } from '@vercel/blob';
 import Busboy from 'busboy';
-import { r2PutObject, r2GetObject, r2DeleteObject, r2ListKeys, r2Ready } from './_r2.js';
 
-export { r2PutObject, r2Ready } from './_r2.js';
+const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
-if (!r2Ready()) {
-  console.warn('R2 не настроен: задайте R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_URL.');
+// Если классический токен не задан — работаем через OIDC (storeId из env).
+export const BLOB_STORE_ID = TOKEN ? undefined : (process.env.BLOB_STORE_ID || process.env.ING_STORE_ID);
+
+if (!TOKEN && !BLOB_STORE_ID) {
+  console.warn('Blob не настроен: задайте BLOB_READ_WRITE_TOKEN или BLOB_STORE_ID/ING_STORE_ID.');
 }
 
 export const CORS_HEADERS = {
@@ -60,19 +63,34 @@ export function parseForm(req) {
 }
 
 /**
+ * Выполняет list() по префиксу, проходя пагинацию до конца.
+ */
+async function listAll(prefix) {
+  let blobs = [];
+  let cursor;
+  do {
+    const page = await list({ prefix, cursor, limit: 1000, storeId: BLOB_STORE_ID });
+    blobs = blobs.concat(page.blobs);
+    cursor = page.cursor;
+  } while (cursor);
+  return blobs;
+}
+
+/**
  * Возвращает все метаданные материалов нужного типа (materials | exams),
  * отсортированные по дате добавления (новые сверху).
  */
 export async function getAll(kind) {
-  const keys = await r2ListKeys(`${kind}/`);
+  const blobs = await listAll(`${kind}/`);
   const meta = [];
-  for (const key of keys) {
-    if (!key.endsWith('.json')) continue;
+  for (const blob of blobs) {
+    if (!blob.pathname.endsWith('.json')) continue;
     try {
-      const raw = await r2GetObject(key);
-      meta.push(JSON.parse(raw.toString('utf8')));
+      const response = await fetch(blob.url);
+      if (!response.ok) continue;
+      meta.push(await response.json());
     } catch {
-      // Повреждённый или отсутствующий объект пропускаем.
+      // Повреждённый блоб пропускаем.
     }
   }
   meta.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -83,25 +101,10 @@ export async function getAll(kind) {
  * Удаляет файл, превью и метаданные материала.
  */
 export async function deleteMaterial(kind, id) {
-  const keys = await r2ListKeys(`${kind}/${id}`);
-  for (const key of keys) {
-    try {
-      await r2DeleteObject(key);
-    } catch {
-      // Объект мог быть удалён параллельно — пропускаем.
-    }
+  const blobs = await listAll(`${kind}/${id}`);
+  for (const blob of blobs) {
+    await del(blob.url, { storeId: BLOB_STORE_ID });
   }
-}
-
-/**
- * Безопасное имя файла для ключа R2: без пути к каталогу, не длиннее 120
- * символов; небезопасные символы заменяются случайным именем.
- */
-export function safeFileName(name) {
-  const clean = String(name || '').replace(/^.*[\\/]/, '').slice(0, 120);
-  if (/^[\w. -]+$/.test(clean)) return clean;
-  const ext = (clean.match(/\.[\w]{1,10}$/) || [''])[0].toLowerCase();
-  return `file-${crypto.randomUUID().slice(0, 8)}${ext}`;
 }
 
 export function guessKind(name, type) {

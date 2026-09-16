@@ -1,16 +1,16 @@
 /*
  * MIK.COM — основной клиентский код.
  *
- * Архитектура специально оставлена простой и читаемой:
- * 1) расписание берётся из schedule.json;
- * 2) настройки интерфейса хранятся локально в localStorage;
- * 3) материалы и файлы хранятся в общей базе Vercel Blob через /api;
- * 4) IndexedDB осталась как офлайн-запасная копия;
- * 5) список опрашивается с сервера каждые 20 секунд, поэтому новые
- *    материалы, добавленные на любом устройстве, появляются у всех.
+ * 1) расписание, материалы, экзамены и файлы хранятся в общей базе
+ *    Supabase (Postgres + Storage). Клиент работает с ней напрямую
+ *    через тонкий fetch-клиент supabase.js, без лишних серверных API;
+ * 2) вход обязателен: открытая регистрация, имя автора показывается
+ *    у материалов, роль admin определяется только сервером (RLS);
+ * 3) настройки интерфейса хранятся локально в localStorage, IndexedDB
+ *    осталась как офлайн-запасная копия материалов;
+ * 4) списки обновляются каждые 20 секунд — изменения с любого
+ *    устройства доходят до всех.
  */
-
-const API_BASE = '/api';
 
 const SUBJECTS = [
   'Физика', 'Математика', 'Программирование', 'Иностранный язык', 'Информатика', 'Другое'
@@ -33,7 +33,10 @@ const state = {
   materials: [],
   exams: [],
   search: '',
-  schedule: null
+  schedule: null,
+  profile: null,
+  admin: false,
+  pollTimer: null
 };
 
 const els = {
@@ -67,7 +70,27 @@ const els = {
   examFile: document.getElementById('examFile'),
   examDescription: document.getElementById('examDescription'),
   examPreview: document.getElementById('examPreview'),
-  wallpaperInput: document.getElementById('wallpaperInput')
+  wallpaperInput: document.getElementById('wallpaperInput'),
+  authScreen: document.getElementById('authScreen'),
+  authTabs: document.getElementById('authTabs'),
+  authForm: document.getElementById('authForm'),
+  authName: document.getElementById('authName'),
+  authEmail: document.getElementById('authEmail'),
+  authPassword: document.getElementById('authPassword'),
+  authError: document.getElementById('authError'),
+  authNote: document.getElementById('authNote'),
+  authSubmit: document.getElementById('authSubmit'),
+  nameField: document.getElementById('nameField'),
+  userBlock: document.getElementById('userBlock'),
+  userName: document.getElementById('userName'),
+  userRole: document.getElementById('userRole'),
+  userAvatar: document.getElementById('userAvatar'),
+  logoutBtn: document.getElementById('logoutBtn'),
+  editScheduleBtn: document.getElementById('editScheduleBtn'),
+  scheduleDialog: document.getElementById('scheduleDialog'),
+  scheduleForm: document.getElementById('scheduleForm'),
+  scheduleJson: document.getElementById('scheduleJson'),
+  scheduleError: document.getElementById('scheduleError')
 };
 
 const DB_NAME = 'mik-com-db';
@@ -106,8 +129,7 @@ function dbGetAll(storeName) {
 }
 
 // Удаляет уже сохранённый материал из локального хранилища.
-// В будущей глобальной версии эта функция станет запросом DELETE к Vercel API,
-// который удалит объект и из Vercel Blob. Интерфейс при этом менять не придётся.
+// Используется как офлайн-запасной путь, когда сервер Supabase недоступен.
 function dbDelete(storeName, id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite');
@@ -140,6 +162,175 @@ function cacheSet(key, value) {
     localStorage.setItem('mik-cache-' + key, JSON.stringify(value));
   } catch (e) {
     // Кэш переполнен или недоступен — просто пропускаем сохранение.
+  }
+}
+
+function sanitizePathName(name) {
+  return String(name).replace(/[^\w.\-а-яёА-ЯЁ]+/gi, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'file';
+}
+
+// Строка из БД (snake_case) превращается в то, что ждёт renderMaterialCard
+// (camelCase). _source отличает материалы от экзаменов (у экзаменов правка/удаление
+// только у админа, у материалов — у автора и админа).
+function toClientRow(row, source) {
+  return Object.assign({}, row, {
+    _source: source,
+    fileName: row.file_name,
+    fileUrl: row.file_url,
+    fileType: row.file_type,
+    previewUrl: row.preview_url
+  });
+}
+
+function stripStorageUrl(candidate) {
+  if (!candidate) return '';
+  const marker = '/object/public/files/';
+  const i = candidate.indexOf(marker);
+  return i >= 0 ? decodeURIComponent(candidate.slice(i + marker.length)) : '';
+}
+
+function friendlyError(error) {
+  if (error instanceof TypeError) return 'Нет интернет-соединения. Проверьте сеть и попробуйте ещё раз.';
+  const message = String((error && error.message) || error);
+  if (/invalid login credentials|invalid_credentials|email not confirmed|email_not_confirmed/i.test(message)) return 'Неверный email/пароль или почта не подтверждена.';
+  if (/JWT|token.*(expired|invalid)|not authenticated/i.test(message)) return 'Сессия истекла. Войдите заново.';
+  if (/row[- ]level security|permission denied|new row violates|violates|policy/i.test(message)) return 'Недостаточно прав: изменение разрешено только автору или администратору.';
+  if (/storage/i.test(message)) return 'Не получилось сохранить файл. Попробуйте ещё раз.';
+  return `Не удалось выполнить запрос: ${message}`;
+}
+
+let authMode = 'in';
+
+function setAuthMode(mode) {
+  authMode = mode;
+  document.querySelectorAll('.auth-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
+  els.nameField.hidden = mode !== 'up';
+  els.authSubmit.textContent = mode === 'up' ? 'Зарегистрироваться' : 'Войти';
+  els.authPassword.autocomplete = mode === 'up' ? 'new-password' : 'current-password';
+}
+
+function showAuthNote(message) {
+  els.authNote.textContent = message;
+  els.authNote.hidden = false;
+  els.authError.hidden = true;
+}
+
+function showAuthError(message) {
+  els.authError.textContent = message;
+  els.authError.hidden = false;
+  els.authNote.hidden = true;
+}
+
+function showAuthScreen() { els.authScreen.hidden = false; }
+function hideAuthScreen() { els.authScreen.hidden = true; }
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  const email = els.authEmail.value.trim().toLowerCase();
+  const password = els.authPassword.value;
+  const name = (els.authName.value.trim() || email.split('@')[0]).slice(0, 40);
+  if (authMode === 'up' && password.length < 6) return showAuthError('Пароль должен быть не короче 6 символов.');
+  els.authSubmit.disabled = true;
+  const original = els.authSubmit.textContent;
+  els.authSubmit.textContent = 'Подождите…';
+  try {
+    if (authMode === 'up') {
+      const data = await SB.signUp(email, password, name);
+      if (!data.access_token) {
+        // Включено подтверждение почты — ждём клика по ссылке из письма.
+        showAuthNote('Регистрация принята. Подтвердите адрес по ссылке, которая ушла на почту, и войдите.');
+        return;
+      }
+    } else {
+      await SB.signIn(email, password);
+    }
+    hideAuthScreen();
+    await onAuthed();
+  } catch (error) {
+    showAuthError(friendlyError(error));
+  } finally {
+    els.authSubmit.disabled = false;
+    els.authSubmit.textContent = original;
+  }
+}
+
+async function loadProfile() {
+  const rows = await SB.select('profiles', 'email,display_name,role', `&id=eq.${SB.user.id}`);
+  state.profile = (rows && rows[0]) || {
+    email: SB.user.email,
+    display_name: (SB.user.user_metadata && SB.user.user_metadata.display_name) || '',
+    role: 'user'
+  };
+  state.admin = state.profile.role === 'admin';
+  renderUserBlock();
+}
+
+function renderUserBlock() {
+  if (!SB.user) { els.userBlock.hidden = true; return; }
+  const name = (state.profile && state.profile.display_name) ||
+    (SB.user.user_metadata && SB.user.user_metadata.display_name) || 'Пользователь';
+  els.userName.textContent = name;
+  els.userAvatar.textContent = name.trim().charAt(0).toUpperCase() || '👤';
+  els.userRole.textContent = state.admin ? 'Администратор' : 'Ученик';
+  els.userBlock.hidden = false;
+  els.editScheduleBtn.hidden = !state.admin;
+}
+
+async function logout() {
+  await SB.signOut();
+  location.reload();
+}
+
+async function onAuthed() {
+  state.materials = cacheGet('materials', []);
+  state.exams = cacheGet('exams', []);
+  const cachedSchedule = cacheGet('schedule', null);
+  renderAll();
+  if (cachedSchedule) renderSchedule(cachedSchedule);
+  try { await loadProfile(); } catch (error) { console.error('Профиль не загружен:', error); }
+  renderUserBlock();
+  await loadData(false);
+}
+
+async function openScheduleEditor() {
+  els.scheduleError.hidden = true;
+  els.scheduleJson.value = '';
+  try {
+    const rows = await SB.select('schedule', 'data');
+    const data = rows && rows[0] && rows[0].data;
+    if (data) els.scheduleJson.value = JSON.stringify(data, null, 2);
+  } catch (error) {
+    els.scheduleError.textContent = friendlyError(error);
+    els.scheduleError.hidden = false;
+    return;
+  }
+  els.scheduleDialog.showModal();
+}
+
+async function saveSchedule(event) {
+  event.preventDefault();
+  els.scheduleError.hidden = true;
+  let data;
+  try {
+    data = JSON.parse(els.scheduleJson.value);
+  } catch (e) {
+    els.scheduleError.textContent = 'Это не валидный JSON. Проверьте скобки и запятые.';
+    els.scheduleError.hidden = false;
+    return;
+  }
+  if (!data || !Array.isArray(data.weeks) || !data.weeks.length) {
+    els.scheduleError.textContent = 'Формат такой же, как в schedule.json: {"weeks": [...]}.';
+    els.scheduleError.hidden = false;
+    return;
+  }
+  try {
+    const rows = await SB.update('schedule', 1, { data, updated_by: SB.user.id });
+    const saved = rows && rows[0];
+    if (saved && saved.data) { cacheSet('schedule', saved.data); renderSchedule(saved.data); }
+    els.scheduleDialog.close();
+  } catch (error) {
+    els.scheduleError.textContent = friendlyError(error);
+    els.scheduleError.hidden = false;
   }
 }
 
@@ -333,11 +524,13 @@ function renderMaterialCard(item) {
   else if (kind === 'document') preview = `<div class="preview preview-file"><strong>Предпросмотр документа</strong><span>${escapeHtml(item.fileName || 'Документ')}</span><small>Формат документа будет открыт через приложение/браузер устройства.</small></div>`;
   else if (item.url) preview = `<div class="preview preview-link"><span>🔗</span><a target="_blank" rel="noopener noreferrer" href="${escapeHtml(item.url)}">${escapeHtml(item.url)}</a></div>`;
   else if (previewSrc) preview = `<div class="preview preview-file"><strong>Файл</strong><span>${escapeHtml(item.fileName || item.title)}</span><small>Этот формат хранится и доступен для скачивания.</small></div>`;
+  const canDelete = state.admin || (item.author_id && SB.user && item._source === 'materials' && item.author_id === SB.user.id);
   const download = (item.data || item.fileUrl) ? `<button class="small-action" data-download="${item.id}">Скачать</button>` : '';
   const open = item.url ? `<a class="small-action" target="_blank" rel="noopener noreferrer" href="${escapeHtml(item.url)}">Открыть</a>` : '';
-  const deleteAction = `<button class="small-action danger-action" data-delete="${item.id}">Удалить</button>`;
+  const deleteAction = canDelete ? `<button class="small-action danger-action" data-delete="${item.id}">Удалить</button>` : '';
+  const author = item.profiles && item.profiles.display_name ? ` • ${escapeHtml(item.profiles.display_name)}` : '';
   return `<article class="material-card ${fresh ? 'new' : ''}" data-id="${item.id}">
-    <div class="material-head"><div class="file-icon">${iconForKind(kind)}</div><div><div class="material-name" title="${escapeHtml(item.fileName || item.title)}">${escapeHtml(item.title)}</div><div class="material-meta">${escapeHtml(item.subject || 'Сессии и экзамены')} • ${escapeHtml(shortenFileName(item.fileName || 'Ссылка'))}${item.size ? ` • ${formatBytes(item.size)}` : ''}</div></div></div>
+    <div class="material-head"><div class="file-icon">${iconForKind(kind)}</div><div><div class="material-name" title="${escapeHtml(item.fileName || item.title)}">${escapeHtml(item.title)}</div><div class="material-meta">${escapeHtml(item.subject || 'Сессии и экзамены')} • ${escapeHtml(shortenFileName(item.fileName || 'Ссылка'))}${item.size ? ` • ${formatBytes(item.size)}` : ''}${author}</div></div></div>
     ${item.description ? `<div class="material-desc">${escapeHtml(item.description)}</div>` : ''}${preview}<div class="material-actions">${download}${open}<button class="small-action" data-seen="${item.id}">${fresh ? 'Отметить' : 'Новое'}</button>${deleteAction}</div>
   </article>`;
 }
@@ -369,6 +562,7 @@ function showSection(name) {
 }
 
 function openAddDialog(subject = state.selectedSubject) {
+  if (!SB.user) return alert('Сначала войдите в аккаунт.');
   state.selectedSubject = subject;
   els.addSubject.value = subject;
   els.fileInput.value = ''; els.linkInput.value = ''; els.fileTitle.value = ''; els.fileDescription.value = ''; els.uploadPreview.hidden = true; if (els.uploadPreview.dataset.objectUrl) URL.revokeObjectURL(els.uploadPreview.dataset.objectUrl); els.uploadPreview.innerHTML = ''; delete els.uploadPreview.dataset.objectUrl;
@@ -433,28 +627,46 @@ async function saveMaterial(event) {
   if (!title) return alert('Обязательно подпишите файл: что это и для чего.');
   if (!file && !url) return alert('Выберите файл или вставьте ссылку.');
 
-  const form = new FormData();
-  form.append('title', title);
-  form.append('subject', subject);
-  form.append('description', els.fileDescription.value.trim());
-  if (file) form.append('file', file);
-  else form.append('url', url);
-
-  if (file && fileKind(file) === 'image' && file.type !== 'image/svg+xml') {
-    const thumb = await makeImageThumb(file);
-    if (thumb) form.append('preview', thumb, 'preview.jpg');
-  }
-
+  const button = els.addDialog.querySelector('.dialog-actions .primary-action');
+  const original = button.textContent;
+  button.disabled = true; button.textContent = 'Загружаем…';
   try {
-    const response = await fetch(`${API_BASE}/materials`, { method: 'POST', body: form });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const item = await response.json();
+    let fileUrl = '', fileType = '', fileName = '', previewUrl = '';
+    if (file) {
+      const folder = `materials/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const safeName = sanitizePathName(file.name);
+      fileName = file.name;
+      await SB.upload('files', folder + '/' + safeName, file);
+      fileUrl = SB.publicUrl('files', folder + '/' + safeName);
+      fileType = file.type || '';
+      if (fileKind(file) === 'image' && file.type !== 'image/svg+xml') {
+        const thumb = await makeImageThumb(file);
+        if (thumb) {
+          await SB.upload('files', folder + '/preview.jpg', thumb);
+          previewUrl = SB.publicUrl('files', folder + '/preview.jpg');
+        }
+      }
+    }
+    const inserted = await SB.insert('materials', {
+      title,
+      description: els.fileDescription.value.trim(),
+      subject,
+      file_url: fileUrl || null,
+      file_name: fileName || null,
+      file_type: fileType || null,
+      preview_url: previewUrl || null,
+      url: url || null,
+      size: file ? file.size : null
+    });
+    const item = toClientRow(inserted && inserted[0], 'materials');
     state.materials.push(item);
     state.selectedSubject = subject;
     saveLocalSettings(); renderAll(); els.addDialog.close(); showSection('lectures');
   } catch (error) {
     console.error('Не удалось добавить материал:', error);
-    alert('Не удалось добавить материал. Проверьте интернет и попробуйте ещё раз.');
+    alert(friendlyError(error));
+  } finally {
+    button.disabled = false; button.textContent = original;
   }
 }
 
@@ -464,25 +676,29 @@ async function saveExam(event) {
   if (!title) return alert('Обязательно укажите название материала.');
   if (!file) return alert('Выберите файл.');
 
-  const form = new FormData();
-  form.append('title', title);
-  form.append('description', els.examDescription.value.trim());
-  form.append('file', file);
-
-  if (file && fileKind(file) === 'image' && file.type !== 'image/svg+xml') {
-    const thumb = await makeImageThumb(file);
-    if (thumb) form.append('preview', thumb, 'preview.jpg');
-  }
-
+  const button = els.examDialog.querySelector('.dialog-actions .primary-action');
+  const original = button.textContent;
+  button.disabled = true; button.textContent = 'Загружаем…';
   try {
-    const response = await fetch(`${API_BASE}/exams`, { method: 'POST', body: form });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const item = await response.json();
+    const folder = `exams/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const safeName = sanitizePathName(file.name);
+    await SB.upload('files', folder + '/' + safeName, file);
+    const inserted = await SB.insert('exams', {
+      title,
+      description: els.examDescription.value.trim(),
+      file_url: SB.publicUrl('files', folder + '/' + safeName),
+      file_name: file.name,
+      file_type: file.type || null,
+      size: file.size
+    });
+    const item = toClientRow(inserted && inserted[0], 'exams');
     state.exams.push(item);
     renderExams(); els.examDialog.close(); showSection('exams');
   } catch (error) {
     console.error('Не удалось добавить материал:', error);
-    alert('Не удалось добавить материал. Проверьте интернет и попробуйте ещё раз.');
+    alert(friendlyError(error));
+  } finally {
+    button.disabled = false; button.textContent = original;
   }
 }
 
@@ -512,7 +728,7 @@ function initEvents() {
   document.getElementById('nextWeek').addEventListener('click', () => { if (state.schedule) { const weeks = state.schedule.weeks.map(w=>Number(w.weekNumber)); const i=weeks.indexOf(state.week); if(i<weeks.length-1){state.week=weeks[i+1];renderSchedule(state.schedule);saveLocalSettings();}} });
   els.themeSwitch.addEventListener('click', () => { els.body.classList.toggle('light'); els.body.classList.toggle('dark'); els.themeSwitch.classList.toggle('on'); els.themeSwitch.setAttribute('aria-checked', String(els.body.classList.contains('light'))); saveLocalSettings(); });
   document.querySelectorAll('[data-action="add"]').forEach(btn => btn.addEventListener('click', () => openAddDialog()));
-  document.querySelector('[data-action="add-exam"]').addEventListener('click', () => els.examDialog.showModal());
+  document.querySelector('[data-action="add-exam"]').addEventListener('click', () => { if (!SB.user) return alert('Сначала войдите в аккаунт.'); els.examDialog.showModal(); });
   document.querySelector('[data-action="mail"]').addEventListener('click', mailLink);
   document.querySelectorAll('[data-section]').forEach(btn => btn.addEventListener('click', () => showSection(btn.dataset.section)));
   els.lectureSubjects.addEventListener('click', e => { const btn=e.target.closest('[data-subject]'); if(!btn)return; state.selectedSubject=btn.dataset.subject; saveLocalSettings(); renderAll(); });
@@ -533,6 +749,12 @@ function initEvents() {
   });
   setupPreview(els.fileInput, els.uploadPreview, els.fileTitle); setupPreview(els.examFile, els.examPreview, els.examTitle);
 
+  els.authTabs.addEventListener('click', e => { const tab = e.target.closest('.auth-tab'); if (tab) setAuthMode(tab.dataset.mode); });
+  els.authForm.addEventListener('submit', handleAuthSubmit);
+  els.logoutBtn.addEventListener('click', logout);
+  els.editScheduleBtn.addEventListener('click', openScheduleEditor);
+  els.scheduleForm.addEventListener('submit', saveSchedule);
+
   // Свайп влево по панели закрывает её — удобно на телефоне.
   let touchStartX = null;
   els.sidePanel.addEventListener('touchstart', e => touchStartX = e.touches[0].clientX, {passive:true});
@@ -550,21 +772,28 @@ async function deleteMaterial(id) {
 
   const storeName = materialIndex >= 0 ? 'materials' : 'exams';
   try {
-    const response = await fetch(`${API_BASE}/${storeName}?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const storagePaths = [item.fileUrl, item.previewUrl].map(stripStorageUrl).filter(Boolean);
+    await Promise.all(storagePaths.map(path =>
+      SB.removeStorage('files', path).catch(error => console.error('Не удалось удалить файл из хранилища:', error))));
+    await SB.remove(storeName, id);
     if (materialIndex >= 0) state.materials.splice(materialIndex, 1);
     else state.exams.splice(examIndex, 1);
   } catch (error) {
     // Сервер недоступен — пытаемся удалить из локальной копии.
     console.error('API удаление не удалось, пробуем локальную базу:', error);
-    try {
-      await openDB();
-      await dbDelete(storeName, id);
-      if (materialIndex >= 0) state.materials.splice(materialIndex, 1);
-      else state.exams.splice(examIndex, 1);
-    } catch (localError) {
-      console.error('Не удалось удалить материал:', localError);
-      alert('Не удалось удалить материал. Попробуйте ещё раз.');
+    if (error instanceof TypeError) {
+      try {
+        await openDB();
+        await dbDelete(storeName, id);
+        if (materialIndex >= 0) state.materials.splice(materialIndex, 1);
+        else state.exams.splice(examIndex, 1);
+      } catch (localError) {
+        console.error('Не удалось удалить материал:', localError);
+        alert('Не удалось удалить материал. Попробуйте ещё раз.');
+        return;
+      }
+    } else {
+      alert(friendlyError(error));
       return;
     }
   }
@@ -583,14 +812,17 @@ function handleMaterialClick(e) {
 
 async function loadData(silent) {
   try {
-    const [materials, exams] = await Promise.all([
-      fetch(`${API_BASE}/materials`).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
-      fetch(`${API_BASE}/exams`).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    const [materials, exams, scheduleRows] = await Promise.all([
+      SB.select('materials', '*,profiles(display_name,email)'),
+      SB.select('exams', '*,profiles(display_name,email)'),
+      SB.select('schedule', 'data')
     ]);
-    state.materials = materials || [];
-    state.exams = exams || [];
+    state.materials = (materials || []).map(row => toClientRow(row, 'materials'));
+    state.exams = (exams || []).map(row => toClientRow(row, 'exams'));
     cacheSet('materials', state.materials);
     cacheSet('exams', state.exams);
+    const scheduleData = scheduleRows && scheduleRows[0] && scheduleRows[0].data;
+    if (scheduleData && scheduleData.weeks) { cacheSet('schedule', scheduleData); renderSchedule(scheduleData); }
     renderAll();
   } catch (error) {
     // Сервер недоступен — показываем локальную копию из IndexedDB.
@@ -608,28 +840,27 @@ async function loadData(silent) {
   }
 }
 
+function startPolling() {
+  clearInterval(state.pollTimer);
+  state.pollTimer = setInterval(() => loadData(true), 20000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadData(true); });
+  window.addEventListener('focus', () => loadData(true));
+}
+
 async function boot() {
   applyTheme(); loadWallpaper(); setDateInfo();
   state.week = Number(localStorage.getItem('mik-week') || 1);
   state.selectedSubject = localStorage.getItem('mik-subject') || SUBJECTS[0];
   initEvents();
-  // Мгновенный первый экран: рисуем последние данные из кэша сразу,
-  // а ответ сервера подтянется фоном и тихо обновит списки.
-  const cachedMaterials = cacheGet('materials', null);
-  const cachedExams = cacheGet('exams', null);
-  if (cachedMaterials || cachedExams) {
-    if (cachedMaterials) state.materials = cachedMaterials;
-    if (cachedExams) state.exams = cachedExams;
-    renderAll();
+  SB.init();
+  const user = await SB.restore();
+  if (user) {
+    hideAuthScreen();
+    await onAuthed();
+    startPolling();
+  } else {
+    showAuthScreen();
   }
-  const cachedSchedule = cacheGet('schedule', null);
-  if (cachedSchedule) renderSchedule(cachedSchedule);
-  await loadData(false);
-  fetch('schedule.json').then(r => { if(!r.ok) throw new Error(r.status); return r.json(); }).then(data => { cacheSet('schedule', data); renderSchedule(data); }).catch(err => { console.error(err); els.scheduleContainer.innerHTML='<div class="empty-state">Не удалось загрузить расписание. Запустите сайт через локальный HTTP-сервер.</div>'; });
-  // Автообновление: изменения с любого устройства доходят до всех.
-  setInterval(() => loadData(true), 20000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadData(true); });
-  window.addEventListener('focus', () => loadData(true));
 }
 
 boot();
