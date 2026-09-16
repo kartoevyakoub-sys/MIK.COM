@@ -86,13 +86,10 @@
       return session;
     }
     try {
-      const form = new URLSearchParams();
-      form.set('grant_type', 'refresh_token');
-      form.set('refresh_token', session.refresh_token);
       const response = await fetch(CFG.url + '/auth/v1/token?grant_type=refresh_token', {
         method: 'POST',
-        headers: { apikey: CFG.anonKey, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: form.toString()
+        headers: { apikey: CFG.anonKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: session.refresh_token })
       });
       const data = await response.json();
       if (!response.ok || !data.access_token) throw new Error('refresh failed');
@@ -153,14 +150,10 @@
     },
 
     signIn: async function (email, password) {
-      const form = new URLSearchParams();
-      form.set('grant_type', 'password');
-      form.set('email', email);
-      form.set('password', password);
       const response = await fetch(CFG.url + '/auth/v1/token?grant_type=password', {
         method: 'POST',
-        headers: { apikey: CFG.anonKey, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: form.toString()
+        headers: { apikey: CFG.anonKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
       });
       const data = await response.json();
       if (!response.ok || !data.access_token) throw httpError(
@@ -182,7 +175,8 @@
       try {
         await fetch(CFG.url + '/auth/v1/logout', {
           method: 'POST',
-          headers: { apikey: CFG.anonKey, Authorization: 'Bearer ' + (session ? session.access_token : '') }
+          headers: { apikey: CFG.anonKey, Authorization: 'Bearer ' + (session ? session.access_token : ''), 'Content-Type': 'application/json' },
+          body: '{}'
         });
       } catch (e) { /* локально выходим в любом случае */ }
       saveSession(null);
