@@ -33,9 +33,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Некорректный идентификатор.' });
     }
 
-    const blobs = await list({ prefix: `${kind}/${id}/`, storeId: BLOB_STORE_ID });
+    const page = await list({ prefix: `${kind}/${id}/`, storeId: BLOB_STORE_ID });
+    const items = page.blobs || [];
     // У превью имя содержит суффикс _preview — так отличаем файлы друг от друга.
-    const target = blobs.find((b) => preview === b.pathname.includes('_preview'));
+    const target = items.find((b) => preview === b.pathname.includes('_preview'));
     if (!target) return res.status(404).json({ error: 'Файл не найден.' });
 
     const upstream = await fetch(target.url);
