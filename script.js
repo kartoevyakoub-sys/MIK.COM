@@ -733,7 +733,7 @@ async function saveExam(event) {
   const original = button.textContent;
   button.disabled = true; button.textContent = 'Загружаем…';
   try {
-    let fileUrl = '', fileType = file.type || null, previewUrl = '';
+    let fileUrl = '', fileType = file.type || null;
     try {
       const fd = new FormData();
       fd.append('kind', 'exams');
@@ -745,15 +745,12 @@ async function saveExam(event) {
         } else {
           fd.append('file', file, file.name);
         }
-        const thumb = await makeImageThumb(file);
-        if (thumb) fd.append('preview', thumb, 'preview.jpg');
       } else {
         fd.append('file', file, file.name);
       }
       const res = await SB.uploadExternal(fd);
       fileUrl = res && res.fileUrl;
       if (!fileUrl) throw new Error('Сервер не вернул ссылку на файл.');
-      previewUrl = (res && res.previewUrl) || '';
       if (res && res.fileType) fileType = res.fileType;
     } catch (uploadError) {
       if (!(uploadError instanceof TypeError)) throw uploadError;
@@ -762,13 +759,6 @@ async function saveExam(event) {
       const safeName = sanitizePathName(file.name);
       await SB.upload('files', folder + '/' + safeName, file);
       fileUrl = SB.publicUrl('files', folder + '/' + safeName);
-      if (fileKind(file) === 'image' && file.type !== 'image/svg+xml') {
-        const thumb = await makeImageThumb(file);
-        if (thumb) {
-          await SB.upload('files', folder + '/preview.jpg', thumb);
-          previewUrl = SB.publicUrl('files', folder + '/preview.jpg');
-        }
-      }
     }
     const inserted = await SB.insert('exams', {
       title,
@@ -776,7 +766,6 @@ async function saveExam(event) {
       file_url: fileUrl,
       file_name: file.name,
       file_type: fileType,
-      preview_url: previewUrl || null,
       size: file.size
     });
     const item = toClientRow(inserted && inserted[0], 'exams');
@@ -860,12 +849,18 @@ async function deleteMaterial(id) {
 
   const storeName = materialIndex >= 0 ? 'materials' : 'exams';
   try {
-    // Файл мог лежать в Vercel Blob (через свой домен) — удаляем и его.
-    const blobHref = (item.fileUrl || '').indexOf('.blob.vercel-storage.com') >= 0 ? item.fileUrl : '';
-    if (blobHref) {
+    // Файл лежит в Vercel Blob — удаляем и его. Ссылка может быть
+    // прокси-формата (/api/file/<kind>/<id>) или прямой blob-ссылкой.
+    const fileUrl = item.fileUrl || '';
+    const proxyMatch = fileUrl.match(/\/api\/file\/(materials|exams)\/([0-9a-f-]{36})/i);
+    const blobMatch = !proxyMatch && fileUrl.indexOf('.blob.vercel-storage.com') >= 0
+      ? (new URL(fileUrl).pathname.split('/').filter(Boolean))
+      : null;
+    const blobKind = proxyMatch ? proxyMatch[1] : (blobMatch ? blobMatch[0] : null);
+    const blobId = proxyMatch ? proxyMatch[2] : (blobMatch ? blobMatch[1] : null);
+    if (blobKind && blobId) {
       try {
-        const segments = new URL(blobHref).pathname.split('/').filter(Boolean);
-        if (segments.length >= 2) await SB.removeExternal(segments[0], segments[1]);
+        await SB.removeExternal(blobKind, blobId);
       } catch (blobError) {
         console.error('Не удалось удалить файл из Blob:', blobError);
       }
