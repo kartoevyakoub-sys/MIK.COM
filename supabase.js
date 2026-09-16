@@ -193,7 +193,7 @@
     // select('profiles', 'email,display_name,role', '&id=eq.UUID')
     select: async function (table, columns, filter) {
       await ensureFreshSession();
-      const response = await request(`/rest/v1/${table}?${columns}${filter || ''}`);
+      const response = await request(`/rest/v1/${table}?select=${columns}${filter || ''}`);
       return response.json();
     },
 
