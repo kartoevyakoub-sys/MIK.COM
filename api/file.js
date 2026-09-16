@@ -3,25 +3,20 @@
  *
  * Прямые ссылки на *.public.blob.vercel-storage.com в нашем регионе рвутся
  * на объёмах >~100 КБ (так же, как и supabase.co). Функция серверно
- * забирает файл из Blob и по-байтово отдаёт клиенту через mik-com.vercel.app,
+ * забирает файл из Blob и отдаёт клиенту через mik-com.vercel.app,
  * который в этом регионе работает стабильно.
  *
- *   GET /api/file/materials/<uuid>            — основной файл
- *   GET /api/file/materials/<uuid>?preview=1  — превью (если есть)
+ *   GET /api/file?kind=materials&id=<uuid>            — основной файл
+ *   GET /api/file?kind=materials&id=<uuid>&preview=1  — превью (если есть)
  *
  * Доступ публичный: сам блоб уже публичный (access: 'public'), URL
  * файлов содержит случайный UUID — как и у обычных blob-ссылок.
  */
 
 import { list } from '@vercel/blob';
-import { CORS_HEADERS, BLOB_STORE_ID } from '../_shared.js';
+import { CORS_HEADERS, BLOB_STORE_ID } from './_shared.js';
 
 export const config = { runtime: 'nodejs' };
-
-function queryParam(req, name) {
-  const url = new URL(req.url, 'http://x');
-  return url.searchParams.get(name) || '';
-}
 
 export default async function handler(req, res) {
   for (const [key, value] of Object.entries(CORS_HEADERS)) res.setHeader(key, value);
@@ -29,25 +24,21 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Метод не поддерживается.' });
 
   try {
-    // Ожидаемый путь: /api/file/<kind>/<id>?preview=1 (slash-слг из [...slug])
-    const slug = Array.isArray(req.query.slug) ? req.query.slug : [];
-    if (slug.length !== 2) {
-      return res.status(400).json({ error: 'Некорректный путь.' });
-    }
-    const [kind, id] = slug;
+    const url = new URL(req.url, 'http://x');
+    const kind = url.searchParams.get('kind') || '';
+    const id = url.searchParams.get('id') || '';
+    const preview = url.searchParams.get('preview') === '1';
+
     if (!/^(materials|exams)$/.test(kind) || !/^[0-9a-f-]{36}$/i.test(id)) {
       return res.status(400).json({ error: 'Некорректный идентификатор.' });
     }
 
-    const preview = queryParam(req, 'preview') === '1';
     const blobs = await list({ prefix: `${kind}/${id}/`, storeId: BLOB_STORE_ID });
-    const names = blobs.map((b) => b.pathname);
-    // Препятствие двойному совпадению: у превью имя имеет суффикс _preview.
-    const target = names.find((name) => preview === name.includes('_preview'));
+    // У превью имя содержит суффикс _preview — так отличаем файлы друг от друга.
+    const target = blobs.find((b) => preview === b.pathname.includes('_preview'));
     if (!target) return res.status(404).json({ error: 'Файл не найден.' });
 
-    const blob = blobs.find((b) => b.pathname === target);
-    const upstream = await fetch(blob.url);
+    const upstream = await fetch(target.url);
     if (!upstream.ok || !upstream.body) {
       return res.status(502).json({ error: 'Не удалось получить файл из хранилища.' });
     }

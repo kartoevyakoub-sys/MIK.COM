@@ -852,7 +852,7 @@ async function deleteMaterial(id) {
     // Файл лежит в Vercel Blob — удаляем и его. Ссылка может быть
     // прокси-формата (/api/file/<kind>/<id>) или прямой blob-ссылкой.
     const fileUrl = item.fileUrl || '';
-    const proxyMatch = fileUrl.match(/\/api\/file\/(materials|exams)\/([0-9a-f-]{36})/i);
+    const proxyMatch = fileUrl.match(/\/api\/file\?(?:[^&]*&)*kind=(materials|exams)&(?:[^&]*&)*id=([0-9a-f-]{36})/i);
     const blobMatch = !proxyMatch && fileUrl.indexOf('.blob.vercel-storage.com') >= 0
       ? (new URL(fileUrl).pathname.split('/').filter(Boolean))
       : null;

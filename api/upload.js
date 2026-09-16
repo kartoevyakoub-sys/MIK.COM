@@ -64,8 +64,8 @@ export default async function handler(req, res) {
     return res.status(201).json({
       kind,
       id,
-      fileUrl: `/api/file/${kind}/${id}`,
-      previewUrl: preview ? `/api/file/${kind}/${id}?preview=1` : '',
+      fileUrl: `/api/file?kind=${kind}&id=${id}`,
+      previewUrl: preview ? `/api/file?kind=${kind}&id=${id}&preview=1` : '',
       fileName: file.filename,
       fileType: file.mime || '',
       size: file.size,
