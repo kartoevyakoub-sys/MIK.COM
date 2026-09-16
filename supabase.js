@@ -5,7 +5,12 @@
  *   select(table, columns[, filter]), insert(table, row),
  *   update(table, id, patch), remove(table, id),
  *   upload(bucket, path, file), publicUrl(bucket, path), removeStorage(bucket, path).
- * Сессия живёт в localStorage; истёкшие токены обновляются автоматически. */
+ * Сессия живёт в localStorage; истёкшие токены обновляются автоматически.
+ *
+ * ВАЖНО: все запросы к Supabase идут ЧЕРЕЗ СВОЙ ДОМЕН (/api/db) — это прокси
+ * на Vercel. Прямые обращения браузера к supabase.co из нашего региона рвутся,
+ * из-за чего при обновлении страницы «пропадали» материалы и расписание.
+ */
 (function () {
   'use strict';
 
@@ -14,6 +19,9 @@
     console.error('config.js не загружена: window.MIK_SUPABASE отсутствует.');
     return;
   }
+  // На тот случай, если кто-то поднимет сайт на другом домене, всё равно
+  // используем прокси своего приложения (он относительный).
+  const API_PROXY = '/api/db';
 
   const SESSION_KEY = 'mik-sb-session';
   const DEFAULT_BUCKET = 'files';
@@ -56,11 +64,17 @@
     return error;
   }
 
+  // Все запросы к Supabase идут через прокси своего домена (/api/db):
+  // прямые обращения браузера к supabase.co из нашего региона обрываются.
+  function proxyUrl(path) {
+    return API_PROXY + '?path=' + encodeURIComponent(path);
+  }
+
   async function request(path, options) {
     const session = loadSession();
     const headers = Object.assign({ apikey: CFG.anonKey }, options.headers || {});
     if (session && session.access_token) headers.Authorization = 'Bearer ' + session.access_token;
-    const response = await fetch(CFG.url + path, Object.assign({}, options, { headers }));
+    const response = await fetch(proxyUrl(path), Object.assign({}, options, { headers }));
     if (!response.ok) {
       let detail = null;
       try { detail = await response.json(); } catch (e) { /* тело не JSON */ }
@@ -86,7 +100,7 @@
       return session;
     }
     try {
-      const response = await fetch(CFG.url + '/auth/v1/token?grant_type=refresh_token', {
+      const response = await fetch(proxyUrl('/auth/v1/token?grant_type=refresh_token'), {
         method: 'POST',
         headers: { apikey: CFG.anonKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: session.refresh_token })
@@ -123,7 +137,7 @@
     },
 
     signUp: async function (email, password, displayName) {
-      const response = await fetch(CFG.url + '/auth/v1/signup', {
+      const response = await fetch(proxyUrl('/auth/v1/signup'), {
         method: 'POST',
         headers: { apikey: CFG.anonKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -150,7 +164,7 @@
     },
 
     signIn: async function (email, password) {
-      const response = await fetch(CFG.url + '/auth/v1/token?grant_type=password', {
+      const response = await fetch(proxyUrl('/auth/v1/token?grant_type=password'), {
         method: 'POST',
         headers: { apikey: CFG.anonKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -173,7 +187,7 @@
     signOut: async function () {
       const session = loadSession();
       try {
-        await fetch(CFG.url + '/auth/v1/logout', {
+        await fetch(proxyUrl('/auth/v1/logout'), {
           method: 'POST',
           headers: { apikey: CFG.anonKey, Authorization: 'Bearer ' + (session ? session.access_token : ''), 'Content-Type': 'application/json' },
           body: '{}'
@@ -275,7 +289,7 @@
     },
 
     publicUrl: function (bucket, path) {
-      return `${CFG.url}/storage/v1/object/public/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`;
+      return proxyUrl(`/storage/v1/object/public/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`);
     }
   };
 

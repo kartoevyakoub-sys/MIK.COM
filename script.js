@@ -918,13 +918,16 @@ async function loadData(silent) {
     if (scheduleData && scheduleData.weeks) { cacheSet('schedule', scheduleData); renderSchedule(scheduleData); }
     renderAll();
   } catch (error) {
-    // Сервер недоступен — показываем локальную копию из IndexedDB.
     console.error('API недоступна, пробуем локальную базу:', error);
     if (!silent) {
       try {
         await openDB();
-        state.materials = await dbGetAll('materials');
-        state.exams = await dbGetAll('exams');
+        const localMaterials = await dbGetAll('materials');
+        const localExams = await dbGetAll('exams');
+        // Не затираем то, что уже отрисовано, если IndexedDB пуста:
+        // пустая «замена» выглядит как полная потеря данных.
+        if (localMaterials.length) state.materials = localMaterials;
+        if (localExams.length) state.exams = localExams;
         renderAll();
       } catch (localError) {
         console.error('IndexedDB недоступна:', localError);
