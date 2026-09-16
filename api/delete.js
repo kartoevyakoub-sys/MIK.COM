@@ -35,6 +35,8 @@ export default async function handler(req, res) {
 
     // Проверяем права так же, как RLS в БД: автор или админ удаляют,
     // экзамены — только админ. Чужие файлы трогать нельзя.
+    // Folder-id блоба живёт внутри file_url (id=<uuid>), поэтому ищем
+    // по вхождению в file_url, а не по первичному ключу записи.
     if (!profile || !profile.id) {
       return res.status(401).json({ error: 'Сессия недействительна. Войдите заново.' });
     }
@@ -44,9 +46,14 @@ export default async function handler(req, res) {
     if (!urlBase || !anon) {
       return res.status(500).json({ error: 'SUPABASE_URL не задан на сервере.' });
     }
-    const rowResp = await fetch(`${urlBase}/rest/v1/${kind}?select=author_id&id=eq.${encodeURIComponent(id)}&limit=1`, {
-      headers: { apikey: anon, Authorization: auth }
-    });
+    const escaped = encodeURIComponent(String(id));
+    const rowResp = await fetch(
+      `${urlBase}/rest/v1/${kind}?select=author_id&file_url=like.*${escaped}*&limit=1`,
+      { headers: { apikey: anon, Authorization: auth } }
+    );
+    if (!rowResp.ok) {
+      return res.status(500).json({ error: 'Не удалось проверить права на запись.' });
+    }
     const rows = await rowResp.json();
     const record = Array.isArray(rows) && rows.length ? rows[0] : null;
     if (!record) {
