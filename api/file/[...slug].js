@@ -14,9 +14,14 @@
  */
 
 import { list } from '@vercel/blob';
-import { CORS_HEADERS, BLOB_STORE_ID } from './_shared.js';
+import { CORS_HEADERS, BLOB_STORE_ID } from '../_shared.js';
 
 export const config = { runtime: 'nodejs' };
+
+function queryParam(req, name) {
+  const url = new URL(req.url, 'http://x');
+  return url.searchParams.get(name) || '';
+}
 
 export default async function handler(req, res) {
   for (const [key, value] of Object.entries(CORS_HEADERS)) res.setHeader(key, value);
@@ -24,17 +29,17 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Метод не поддерживается.' });
 
   try {
-    // Ожидаемый путь: /api/file/<kind>/<id>?preview=1
-    const parts = new URL(req.url, 'http://x').pathname.split('/').filter(Boolean);
-    if (parts.length < 3 || parts[0] !== 'api' || parts[1] !== 'file') {
+    // Ожидаемый путь: /api/file/<kind>/<id>?preview=1 (slash-слг из [...slug])
+    const slug = Array.isArray(req.query.slug) ? req.query.slug : [];
+    if (slug.length !== 2) {
       return res.status(400).json({ error: 'Некорректный путь.' });
     }
-    const [kind, id] = [parts[2], parts[3]];
+    const [kind, id] = slug;
     if (!/^(materials|exams)$/.test(kind) || !/^[0-9a-f-]{36}$/i.test(id)) {
       return res.status(400).json({ error: 'Некорректный идентификатор.' });
     }
 
-    const preview = new URL(req.url, 'http://x').searchParams.get('preview') === '1';
+    const preview = queryParam(req, 'preview') === '1';
     const blobs = await list({ prefix: `${kind}/${id}/`, storeId: BLOB_STORE_ID });
     const names = blobs.map((b) => b.pathname);
     // Препятствие двойному совпадению: у превью имя имеет суффикс _preview.
