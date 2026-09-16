@@ -29,11 +29,22 @@ export const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey'
 };
 
+export function jwtSub(token) {
+  try {
+    const part = String(token).split('.')[1];
+    const pad = part.length % 4 === 0 ? '' : '='.repeat(4 - part.length % 4);
+    const json = Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/') + pad, 'base64').toString('utf8');
+    return JSON.parse(json).sub || '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Проверяет, что запрос пришёл от залогиненного пользователя сайта.
  * Делает служебный запрос к Supabase с токеном клиента; если токен
- * недействителен — 401. Нужно, чтобы Blob-загрузки не превратились
- * в публичную свалку для всех.
+ * недействителен — 401. Возвращает профиль САМОГО пользователя.
+ * Нужно, чтобы Blob-загрузки не превратились в публичную свалку для всех.
  */
 export async function assertSupabaseUser(req) {
   const auth = String(req.headers['authorization'] || '');
@@ -52,16 +63,29 @@ export async function assertSupabaseUser(req) {
     error.status = 500;
     throw error;
   }
-  const response = await fetch(`${url}/rest/v1/profiles?select=id,role&limit=1`, {
-    headers: { apikey: anon, Authorization: auth }
-  });
+  const sub = jwtSub(token);
+  if (!sub) {
+    const error = new Error('Сессия недействительна. Войдите заново.');
+    error.status = 401;
+    throw error;
+  }
+  let response;
+  try {
+    response = await fetch(`${url}/rest/v1/profiles?select=id,role&id=eq.${encodeURIComponent(sub)}&limit=1`, {
+      headers: { apikey: anon, Authorization: auth }
+    });
+  } catch (networkError) {
+    const error = new Error('Не удалось проверить сессию.');
+    error.status = 502;
+    throw error;
+  }
   if (!response.ok) {
     const error = new Error('Сессия недействительна. Войдите заново.');
     error.status = 401;
     throw error;
   }
   const rows = await response.json();
-  return Array.isArray(rows) && rows.length ? rows[0] : { id: null, role: null };
+  return Array.isArray(rows) && rows.length ? rows[0] : { id: sub, role: 'user' };
 }
 
 export function metaPath(kind, id) {
