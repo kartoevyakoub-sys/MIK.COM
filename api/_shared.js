@@ -43,10 +43,12 @@ export async function assertSupabaseUser(req) {
     error.status = 401;
     throw error;
   }
+  // anon-ключ публичный и приходит от клиента в заголовке apikey;
+  // URL проекта задан в Vercel env (SUPABASE_URL).
   const url = process.env.SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY;
+  const anon = String(req.headers['apikey'] || '');
   if (!url || !anon) {
-    const error = new Error('SUPABASE_URL или SUPABASE_ANON_KEY не заданы.');
+    const error = new Error('SUPABASE_URL не задан на сервере.');
     error.status = 500;
     throw error;
   }
