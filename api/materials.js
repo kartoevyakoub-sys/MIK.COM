@@ -10,7 +10,7 @@
  */
 
 import { put } from '@vercel/blob';
-import { getAll, deleteMaterial, metaPath, guessKind, parseForm, CORS_HEADERS, BLOB_STORE_ID } from './_shared.js';
+import { getAll, deleteMaterial, metaPath, guessKind, parseForm, CORS_HEADERS, BLOB_STORE_ID, assertSupabaseUser } from './_shared.js';
 
 export const config = { runtime: 'nodejs', api: { bodyParser: false } };
 
@@ -27,6 +27,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
+      await assertSupabaseUser(req);
       const { fields, files } = await parseForm(req);
       const title = String(fields.title || '').trim();
       const subject = String(fields.subject || '').trim();
@@ -102,6 +103,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'DELETE') {
+      await assertSupabaseUser(req);
       const id = String(req.query.id || '');
       if (!id) return res.status(400).json({ error: 'Не указан id материала.' });
       await deleteMaterial(KIND, id);
