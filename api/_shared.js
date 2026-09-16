@@ -52,7 +52,7 @@ export async function assertSupabaseUser(req) {
     error.status = 500;
     throw error;
   }
-  const response = await fetch(`${url}/rest/v1/profiles?select=id&limit=1`, {
+  const response = await fetch(`${url}/rest/v1/profiles?select=id,role&limit=1`, {
     headers: { apikey: anon, Authorization: auth }
   });
   if (!response.ok) {
@@ -60,7 +60,8 @@ export async function assertSupabaseUser(req) {
     error.status = 401;
     throw error;
   }
-  return response.json();
+  const rows = await response.json();
+  return Array.isArray(rows) && rows.length ? rows[0] : { id: null, role: null };
 }
 
 export function metaPath(kind, id) {

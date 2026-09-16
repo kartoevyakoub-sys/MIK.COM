@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Метод не поддерживается.' });
 
   try {
-    await assertSupabaseUser(req);
+    const profile = await assertSupabaseUser(req);
 
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
@@ -31,6 +31,32 @@ export default async function handler(req, res) {
     const id = (body && body.id) || '';
     if (!KIND_OK.has(kind) || !id) {
       return res.status(400).json({ error: 'Нужны kind (materials|exams) и id.' });
+    }
+
+    // Проверяем права так же, как RLS в БД: автор или админ удаляют,
+    // экзамены — только админ. Чужие файлы трогать нельзя.
+    if (!profile || !profile.id) {
+      return res.status(401).json({ error: 'Сессия недействительна. Войдите заново.' });
+    }
+    const urlBase = process.env.SUPABASE_URL;
+    const anon = String(req.headers['apikey'] || '');
+    const auth = String(req.headers['authorization'] || '');
+    if (!urlBase || !anon) {
+      return res.status(500).json({ error: 'SUPABASE_URL не задан на сервере.' });
+    }
+    const rowResp = await fetch(`${urlBase}/rest/v1/${kind}?select=author_id&id=eq.${encodeURIComponent(id)}&limit=1`, {
+      headers: { apikey: anon, Authorization: auth }
+    });
+    const rows = await rowResp.json();
+    const record = Array.isArray(rows) && rows.length ? rows[0] : null;
+    if (!record) {
+      return res.status(404).json({ error: 'Запись не найдена.' });
+    }
+    const isAdmin = profile.role === 'admin';
+    const isAuthor = record.author_id === profile.id;
+    const allowed = kind === 'materials' ? (isAuthor || isAdmin) : isAdmin;
+    if (!allowed) {
+      return res.status(403).json({ error: 'Удалять можно только свои материалы.' });
     }
 
     await deleteMaterial(kind, String(id));
