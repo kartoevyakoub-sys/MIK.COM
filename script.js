@@ -398,6 +398,28 @@ function makeImageThumb(file) {
   });
 }
 
+// Уменьшает большое фото (напр. 8 МБ с телефона) до компактного JPEG
+// (макс. 1600px по большей стороне, качество ~0.82). Так файл выходит
+// ~150-500 КБ и уверенно доезжает через свой сервер, не упираясь в лимиты.
+function makeImageFile(file, maxSide = 1600, quality = 0.82) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const width = Math.max(1, Math.round(img.width * scale));
+      const height = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(blob => resolve(blob), 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
 function isNew(item) {
   return item.newForEveryone !== false && !JSON.parse(localStorage.getItem('mik-seen') || '[]').includes(item.id);
 }
@@ -635,17 +657,46 @@ async function saveMaterial(event) {
   try {
     let fileUrl = '', fileType = '', fileName = '', previewUrl = '';
     if (file) {
-      const folder = `materials/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      const safeName = sanitizePathName(file.name);
       fileName = file.name;
-      await SB.upload('files', folder + '/' + safeName, file);
-      fileUrl = SB.publicUrl('files', folder + '/' + safeName);
       fileType = file.type || '';
-      if (fileKind(file) === 'image' && file.type !== 'image/svg+xml') {
-        const thumb = await makeImageThumb(file);
-        if (thumb) {
-          await SB.upload('files', folder + '/preview.jpg', thumb);
-          previewUrl = SB.publicUrl('files', folder + '/preview.jpg');
+      try {
+        // Основной путь: файл (для картинок — компактная копия) уходит в Vercel Blob
+        // через свой домен, метаданные потом пишем в Supabase. Так крупные файлы
+        // доезжают даже с нестабильного канала: он режет прямые передачи supabase.co.
+        const fd = new FormData();
+        fd.append('kind', 'materials');
+        if (fileKind(file) === 'image' && file.type !== 'image/svg+xml') {
+          const web = await makeImageFile(file);
+          if (web) {
+            fd.append('file', web, (fileName.replace(/\.[^.]+$/, '') || 'image') + '.jpg');
+            fileType = 'image/jpeg';
+          } else {
+            fd.append('file', file, fileName);
+          }
+          const thumb = await makeImageThumb(file);
+          if (thumb) fd.append('preview', thumb, 'preview.jpg');
+        } else {
+          fd.append('file', file, fileName);
+        }
+        const res = await SB.uploadExternal(fd);
+        fileUrl = res && res.fileUrl;
+        if (!fileUrl) throw new Error('Сервер не вернул ссылку на файл.');
+        previewUrl = (res && res.previewUrl) || '';
+        if (res && res.fileType) fileType = res.fileType;
+      } catch (uploadError) {
+        // Только при реальном обрыве связи пробуем резервный прямой путь в Supabase.
+        if (!(uploadError instanceof TypeError)) throw uploadError;
+        console.error('Blob-загрузка не удалась, пробуем напрямую в Supabase:', uploadError);
+        const folder = `materials/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        const safeName = sanitizePathName(file.name);
+        await SB.upload('files', folder + '/' + safeName, file);
+        fileUrl = SB.publicUrl('files', folder + '/' + safeName);
+        if (fileKind(file) === 'image' && file.type !== 'image/svg+xml') {
+          const thumb = await makeImageThumb(file);
+          if (thumb) {
+            await SB.upload('files', folder + '/preview.jpg', thumb);
+            previewUrl = SB.publicUrl('files', folder + '/preview.jpg');
+          }
         }
       }
     }
@@ -682,15 +733,50 @@ async function saveExam(event) {
   const original = button.textContent;
   button.disabled = true; button.textContent = 'Загружаем…';
   try {
-    const folder = `exams/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const safeName = sanitizePathName(file.name);
-    await SB.upload('files', folder + '/' + safeName, file);
+    let fileUrl = '', fileType = file.type || null, previewUrl = '';
+    try {
+      const fd = new FormData();
+      fd.append('kind', 'exams');
+      if (fileKind(file) === 'image' && file.type !== 'image/svg+xml') {
+        const web = await makeImageFile(file);
+        if (web) {
+          fd.append('file', web, (title.replace(/\.[^.]+$/, '') || 'image') + '.jpg');
+          fileType = 'image/jpeg';
+        } else {
+          fd.append('file', file, file.name);
+        }
+        const thumb = await makeImageThumb(file);
+        if (thumb) fd.append('preview', thumb, 'preview.jpg');
+      } else {
+        fd.append('file', file, file.name);
+      }
+      const res = await SB.uploadExternal(fd);
+      fileUrl = res && res.fileUrl;
+      if (!fileUrl) throw new Error('Сервер не вернул ссылку на файл.');
+      previewUrl = (res && res.previewUrl) || '';
+      if (res && res.fileType) fileType = res.fileType;
+    } catch (uploadError) {
+      if (!(uploadError instanceof TypeError)) throw uploadError;
+      console.error('Blob-загрузка не удалась, пробуем напрямую в Supabase:', uploadError);
+      const folder = `exams/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const safeName = sanitizePathName(file.name);
+      await SB.upload('files', folder + '/' + safeName, file);
+      fileUrl = SB.publicUrl('files', folder + '/' + safeName);
+      if (fileKind(file) === 'image' && file.type !== 'image/svg+xml') {
+        const thumb = await makeImageThumb(file);
+        if (thumb) {
+          await SB.upload('files', folder + '/preview.jpg', thumb);
+          previewUrl = SB.publicUrl('files', folder + '/preview.jpg');
+        }
+      }
+    }
     const inserted = await SB.insert('exams', {
       title,
       description: els.examDescription.value.trim(),
-      file_url: SB.publicUrl('files', folder + '/' + safeName),
+      file_url: fileUrl,
       file_name: file.name,
-      file_type: file.type || null,
+      file_type: fileType,
+      preview_url: previewUrl || null,
       size: file.size
     });
     const item = toClientRow(inserted && inserted[0], 'exams');
@@ -774,6 +860,16 @@ async function deleteMaterial(id) {
 
   const storeName = materialIndex >= 0 ? 'materials' : 'exams';
   try {
+    // Файл мог лежать в Vercel Blob (через свой домен) — удаляем и его.
+    const blobHref = (item.fileUrl || '').indexOf('.blob.vercel-storage.com') >= 0 ? item.fileUrl : '';
+    if (blobHref) {
+      try {
+        const segments = new URL(blobHref).pathname.split('/').filter(Boolean);
+        if (segments.length >= 2) await SB.removeExternal(segments[0], segments[1]);
+      } catch (blobError) {
+        console.error('Не удалось удалить файл из Blob:', blobError);
+      }
+    }
     const storagePaths = [item.fileUrl, item.previewUrl].map(stripStorageUrl).filter(Boolean);
     await Promise.all(storagePaths.map(path =>
       SB.removeStorage('files', path).catch(error => console.error('Не удалось удалить файл из хранилища:', error))));

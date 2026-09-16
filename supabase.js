@@ -226,6 +226,48 @@
       });
     },
 
+    // Загрузка файла через свой сервер (Vercel Blob): крупные файлы в наш
+    // регион напрямую через supabase.co не доезжают, а свой домен работает.
+    uploadExternal: async function (formData) {
+      await ensureFreshSession();
+      const session = loadSession();
+      const headers = { apikey: CFG.anonKey };
+      if (session && session.access_token) headers.Authorization = 'Bearer ' + session.access_token;
+      const response = await fetch('/api/upload', { method: 'POST', headers, body: formData });
+      if (!response.ok) {
+        let detail = null;
+        try { detail = await response.json(); } catch (e) { /* тело не JSON */ }
+        throw httpError(
+          (detail && (detail.error || detail.message)) || 'Ошибка загрузки файла.',
+          response.status
+        );
+      }
+      return response.json();
+    },
+
+    // Удаление файлов из Vercel Blob (kind: materials|exams, id — папка).
+    removeExternal: async function (kind, id) {
+      const session = loadSession();
+      const response = await fetch('/api/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: CFG.anonKey,
+          Authorization: 'Bearer ' + (session && session.access_token ? session.access_token : '')
+        },
+        body: JSON.stringify({ kind, id })
+      });
+      if (!response.ok) {
+        let detail = null;
+        try { detail = await response.json(); } catch (e) { /* тело не JSON */ }
+        throw httpError(
+          (detail && (detail.error || detail.message)) || 'Не удалось удалить файл.',
+          response.status
+        );
+      }
+      return response.json();
+    },
+
     removeStorage: async function (bucket, path) {
       await ensureFreshSession();
       const segments = path.split('/').map(encodeURIComponent).join('/');

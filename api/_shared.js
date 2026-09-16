@@ -26,8 +26,40 @@ if (!TOKEN && !BLOB_STORE_ID) {
 export const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type'
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey'
 };
+
+/**
+ * Проверяет, что запрос пришёл от залогиненного пользователя сайта.
+ * Делает служебный запрос к Supabase с токеном клиента; если токен
+ * недействителен — 401. Нужно, чтобы Blob-загрузки не превратились
+ * в публичную свалку для всех.
+ */
+export async function assertSupabaseUser(req) {
+  const auth = String(req.headers['authorization'] || '');
+  const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  if (!token) {
+    const error = new Error('Требуется вход в аккаунт.');
+    error.status = 401;
+    throw error;
+  }
+  const url = process.env.SUPABASE_URL;
+  const anon = process.env.SUPABASE_ANON_KEY;
+  if (!url || !anon) {
+    const error = new Error('SUPABASE_URL или SUPABASE_ANON_KEY не заданы.');
+    error.status = 500;
+    throw error;
+  }
+  const response = await fetch(`${url}/rest/v1/profiles?select=id&limit=1`, {
+    headers: { apikey: anon, Authorization: auth }
+  });
+  if (!response.ok) {
+    const error = new Error('Сессия недействительна. Войдите заново.');
+    error.status = 401;
+    throw error;
+  }
+  return response.json();
+}
 
 export function metaPath(kind, id) {
   return `${kind}/${id}.json`;
